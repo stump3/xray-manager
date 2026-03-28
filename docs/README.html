@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xray Manager — Документация</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ── Reset & Base ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --void:   #07090e;
+  --deep:   #0c0f17;
+  --surface:#111520;
+  --raised: #161b28;
+  --rim:    #1e2535;
+  --mist:   #2a3347;
+  --sub:    #4a5568;
+  --dim:    #6b7a99;
+  --soft:   #8899bb;
+  --body:   #b8c8e8;
+  --head:   #dce8ff;
+  --white:  #f0f6ff;
+
+  --cyan:   #4dd9e8;
+  --cyan2:  #7ee8f4;
+  --teal:   #2dd4bf;
+  --green:  #4ade80;
+  --lime:   #a3e635;
+  --yellow: #fbbf24;
+  --amber:  #f59e0b;
+  --orange: #fb923c;
+  --red:    #f87171;
+  --purple: #a78bfa;
+  --pink:   #f472b6;
+  --blue:   #60a5fa;
+
+  --glow-c: rgba(77,217,232,.15);
+  --glow-g: rgba(74,222,128,.12);
+  --glow-p: rgba(167,139,250,.12);
+
+  --r: 10px;
+  --r-sm: 6px;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-head: 'Syne', sans-serif;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--void);
+  color: var(--body);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.75;
+  overflow-x: hidden;
+}
+
+/* ── Noise Overlay ───────────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");
+  pointer-events: none;
+}
+
+/* ── Glow Background ─────────────────────────────────────────── */
+.bg-glow {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+}
+.bg-glow::before {
+  content: '';
+  position: absolute;
+  top: -20%; left: -10%;
+  width: 60vw; height: 60vw;
+  background: radial-gradient(circle, rgba(77,217,232,.06) 0%, transparent 70%);
+  animation: drift1 20s ease-in-out infinite alternate;
+}
+.bg-glow::after {
+  content: '';
+  position: absolute;
+  bottom: -20%; right: -10%;
+  width: 50vw; height: 50vw;
+  background: radial-gradient(circle, rgba(74,222,128,.05) 0%, transparent 70%);
+  animation: drift2 25s ease-in-out infinite alternate;
+}
+@keyframes drift1 { to { transform: translate(5%, 8%); } }
+@keyframes drift2 { to { transform: translate(-5%, -8%); } }
+
+/* ── Layout ──────────────────────────────────────────────────── */
+.wrapper {
+  position: relative; z-index: 1;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+
+/* ── Header ──────────────────────────────────────────────────── */
+.site-header {
+  padding: 5rem 0 4rem;
+  text-align: center;
+  border-bottom: 1px solid var(--rim);
+}
+
+.ascii-wrap {
+  display: inline-block;
+  position: relative;
+  margin-bottom: 2rem;
+}
+.ascii-wrap::before {
+  content: '';
+  position: absolute; inset: -12px;
+  background: radial-gradient(ellipse at center, rgba(77,217,232,.08) 0%, transparent 70%);
+  border-radius: 8px;
+}
+.ascii {
+  font-family: var(--font-mono);
+  font-size: .58rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: .02em;
+  white-space: pre;
+  color: var(--cyan);
+  text-shadow: 0 0 30px rgba(77,217,232,.4);
+  position: relative;
+}
+
+.site-header h1 {
+  font-family: var(--font-head);
+  font-size: 1.1rem;
+  font-weight: 400;
+  color: var(--dim);
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  margin-bottom: 1.5rem;
+}
+
+.badges {
+  display: flex; gap: .6rem; justify-content: center; flex-wrap: wrap;
+}
+.badge {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font-family: var(--font-mono); font-size: .7rem; font-weight: 500;
+  padding: .3rem .8rem;
+  border-radius: 100px;
+  border: 1px solid var(--rim);
+  background: var(--surface);
+  color: var(--soft);
+  transition: all .2s;
+}
+.badge:hover { border-color: var(--mist); color: var(--body); }
+.badge.c { border-color: rgba(77,217,232,.3); color: var(--cyan); background: rgba(77,217,232,.05); }
+.badge.g { border-color: rgba(74,222,128,.3); color: var(--green); background: rgba(74,222,128,.05); }
+.badge.o { border-color: rgba(251,146,60,.3);  color: var(--orange); background: rgba(251,146,60,.05); }
+.badge.p { border-color: rgba(167,139,250,.3); color: var(--purple); background: rgba(167,139,250,.05); }
+
+/* ── Nav ─────────────────────────────────────────────────────── */
+.nav-wrap {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(7,9,14,.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--rim);
+}
+.nav-inner {
+  display: flex; align-items: center; gap: 0;
+  overflow-x: auto; scrollbar-width: none;
+  padding: 0 2rem;
+  max-width: 1080px; margin: 0 auto;
+}
+.nav-inner::-webkit-scrollbar { display: none; }
+.nav-inner a {
+  color: var(--sub); text-decoration: none;
+  font-size: .75rem; font-weight: 500; letter-spacing: .03em;
+  padding: .9rem 1rem;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: all .2s;
+}
+.nav-inner a:hover { color: var(--cyan); border-bottom-color: rgba(77,217,232,.4); }
+
+/* ── Main Content ────────────────────────────────────────────── */
+main { padding: 3rem 0 6rem; }
+
+section { margin-bottom: 4rem; }
+
+/* ── Section Headers ─────────────────────────────────────────── */
+.section-label {
+  font-family: var(--font-head); font-size: .65rem; font-weight: 700;
+  letter-spacing: .2em; text-transform: uppercase;
+  color: var(--cyan); margin-bottom: .5rem;
+}
+h2 {
+  font-family: var(--font-head); font-size: 1.75rem; font-weight: 800;
+  color: var(--head); line-height: 1.2; margin-bottom: 1.25rem;
+}
+h3 {
+  font-family: var(--font-head); font-size: 1.1rem; font-weight: 700;
+  color: var(--white); margin: 2rem 0 .75rem;
+}
+h4 {
+  font-size: .85rem; font-weight: 700; color: var(--cyan);
+  text-transform: uppercase; letter-spacing: .1em;
+  margin: 1.5rem 0 .5rem;
+}
+p { color: var(--body); margin-bottom: .75rem; }
+a { color: var(--cyan); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── Component Cards ─────────────────────────────────────────── */
+.comp-grid {
+  display: grid; grid-template-columns: repeat(3,1fr); gap: 1px;
+  background: var(--rim); border: 1px solid var(--rim); border-radius: var(--r);
+  overflow: hidden; margin-bottom: 2.5rem;
+}
+.comp-card {
+  background: var(--surface); padding: 1.75rem;
+  transition: background .2s;
+}
+.comp-card:hover { background: var(--raised); }
+.comp-card .ic {
+  font-size: 1.6rem; margin-bottom: .75rem; display: block;
+}
+.comp-card h4 {
+  font-family: var(--font-head); font-size: 1rem; font-weight: 700;
+  color: var(--head); text-transform: none; letter-spacing: 0;
+  margin: 0 0 .4rem;
+}
+.comp-card .sub {
+  font-size: .75rem; color: var(--dim); font-weight: 500;
+  text-transform: uppercase; letter-spacing: .12em; margin-bottom: .6rem;
+}
+.comp-card p { font-size: .82rem; color: var(--soft); margin: 0; }
+
+.comp-card.xray .ic { filter: drop-shadow(0 0 8px rgba(77,217,232,.5)); }
+.comp-card.mtproto .ic { filter: drop-shadow(0 0 8px rgba(167,139,250,.5)); }
+.comp-card.hysteria .ic { filter: drop-shadow(0 0 8px rgba(74,222,128,.5)); }
+
+/* ── Feature Table ───────────────────────────────────────────── */
+.feat-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+  background: var(--rim); border: 1px solid var(--rim); border-radius: var(--r);
+  overflow: hidden; margin-bottom: 2rem;
+}
+.feat-item {
+  background: var(--surface); padding: .9rem 1.25rem;
+  display: flex; align-items: flex-start; gap: .75rem;
+}
+.feat-item .dot {
+  width: 6px; height: 6px; border-radius: 50%; margin-top: .45rem; flex-shrink: 0;
+}
+.feat-item .dot.c { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+.feat-item .dot.g { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.feat-item .dot.p { background: var(--purple); box-shadow: 0 0 6px var(--purple); }
+.feat-item .dot.o { background: var(--orange); box-shadow: 0 0 6px var(--orange); }
+.feat-item strong { color: var(--head); font-weight: 600; display: block; font-size: .82rem; }
+.feat-item span { color: var(--dim); font-size: .78rem; }
+
+/* ── Protocol Cards ──────────────────────────────────────────── */
+.proto-list { display: flex; flex-direction: column; gap: .75rem; }
+.proto-card {
+  background: var(--surface); border: 1px solid var(--rim);
+  border-radius: var(--r); overflow: hidden;
+  transition: border-color .2s;
+}
+.proto-card:hover { border-color: var(--mist); }
+.proto-head {
+  padding: 1rem 1.25rem .6rem;
+  display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+}
+.proto-name {
+  font-family: var(--font-head); font-size: .95rem; font-weight: 700; color: var(--head);
+}
+.proto-tags { display: flex; gap: .4rem; flex-wrap: wrap; }
+.ptag {
+  font-size: .65rem; font-weight: 700; padding: .15rem .5rem;
+  border-radius: 4px; text-transform: uppercase; letter-spacing: .07em;
+}
+.ptag.green  { background: rgba(74,222,128,.12);  color: var(--green);  border: 1px solid rgba(74,222,128,.2); }
+.ptag.cyan   { background: rgba(77,217,232,.12);  color: var(--cyan);   border: 1px solid rgba(77,217,232,.2); }
+.ptag.orange { background: rgba(251,146,60,.12);  color: var(--orange); border: 1px solid rgba(251,146,60,.2); }
+.ptag.purple { background: rgba(167,139,250,.12); color: var(--purple); border: 1px solid rgba(167,139,250,.2); }
+.ptag.gray   { background: rgba(107,122,153,.12); color: var(--dim);    border: 1px solid rgba(107,122,153,.2); }
+.ptag.yellow { background: rgba(251,191,36,.12);  color: var(--yellow); border: 1px solid rgba(251,191,36,.2); }
+.proto-body {
+  padding: 0 1.25rem .9rem;
+  font-size: .82rem; color: var(--soft); line-height: 1.6;
+}
+.proto-body + pre { margin: 0; border-top: 1px solid var(--rim); border-radius: 0; }
+.proto-card.star { border-color: rgba(77,217,232,.25); }
+.proto-card.star .proto-name { color: var(--cyan); }
+
+/* ── Code & Pre ──────────────────────────────────────────────── */
+code {
+  font-family: var(--font-mono);
+  background: var(--raised); border: 1px solid var(--rim);
+  border-radius: 4px; padding: .1rem .4rem;
+  font-size: .8rem; color: var(--orange);
+}
+pre {
+  background: var(--deep);
+  border: 1px solid var(--rim); border-radius: var(--r);
+  padding: 1.25rem 1.5rem; overflow-x: auto;
+  margin: .75rem 0 1.25rem; position: relative;
+}
+pre code {
+  background: none; border: none; padding: 0;
+  font-size: .8rem; color: var(--green); font-weight: 400; line-height: 1.8;
+}
+pre .cm { color: var(--dim); }    /* comment */
+pre .ky { color: var(--cyan); }   /* keyword */
+pre .vr { color: var(--orange); } /* var */
+pre .st { color: var(--teal); }   /* string */
+pre .nm { color: var(--purple); } /* number */
+pre .op { color: var(--yellow); } /* operator */
+
+/* ── Tables ──────────────────────────────────────────────────── */
+.tbl-wrap { overflow-x: auto; margin: .75rem 0 1.5rem; border-radius: var(--r); border: 1px solid var(--rim); }
+table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+thead { background: var(--raised); }
+th { padding: .7rem 1rem; text-align: left; color: var(--cyan); font-weight: 600; font-size: .72rem; text-transform: uppercase; letter-spacing: .1em; white-space: nowrap; }
+td { padding: .65rem 1rem; border-top: 1px solid var(--rim); color: var(--body); vertical-align: top; }
+tr:hover td { background: rgba(255,255,255,.015); }
+td code { font-size: .75rem; }
+
+/* ── Callouts ────────────────────────────────────────────────── */
+.callout {
+  border-radius: var(--r); padding: 1rem 1.25rem;
+  margin: 1rem 0; display: flex; gap: .75rem; align-items: flex-start;
+  font-size: .83rem;
+}
+.callout .ico { font-size: 1rem; flex-shrink: 0; margin-top: .1rem; }
+.callout.tip  { background: rgba(74,222,128,.06); border: 1px solid rgba(74,222,128,.2); }
+.callout.warn { background: rgba(251,146,60,.06); border: 1px solid rgba(251,146,60,.2); }
+.callout.info { background: rgba(77,217,232,.06); border: 1px solid rgba(77,217,232,.2); }
+.callout.tip  strong { color: var(--green); }
+.callout.warn strong { color: var(--orange); }
+.callout.info strong { color: var(--cyan); }
+
+/* ── Menu Tree ───────────────────────────────────────────────── */
+.menu-tree {
+  background: var(--deep); border: 1px solid var(--rim); border-radius: var(--r);
+  padding: 1.75rem 2rem; overflow-x: auto;
+  font-size: .8rem; line-height: 2;
+  position: relative;
+}
+.menu-tree::before {
+  content: 'NAVIGATION TREE';
+  position: absolute; top: .75rem; right: 1rem;
+  font-size: .6rem; letter-spacing: .15em; color: var(--mist);
+}
+.mt-root { color: var(--head); font-weight: 700; font-size: .9rem; }
+.mt-b   { color: var(--dim); }
+.mt-x   { color: var(--cyan); font-weight: 600; }
+.mt-m   { color: var(--purple); font-weight: 600; }
+.mt-h   { color: var(--green); font-weight: 600; }
+.mt-s   { color: var(--sub); }
+.mt-c   { color: var(--mist); font-size: .72rem; }
+
+/* ── API Endpoint List ───────────────────────────────────────── */
+.api-list { display: flex; flex-direction: column; gap: 1px; background: var(--rim); border: 1px solid var(--rim); border-radius: var(--r); overflow: hidden; margin: .75rem 0 1.5rem; }
+.api-item { background: var(--surface); display: flex; align-items: center; gap: 1rem; padding: .7rem 1.25rem; font-size: .8rem; }
+.api-item:hover { background: var(--raised); }
+.method { font-weight: 700; font-size: .7rem; padding: .2rem .5rem; border-radius: 4px; min-width: 52px; text-align: center; }
+.method.get  { background: rgba(74,222,128,.12);  color: var(--green);  border: 1px solid rgba(74,222,128,.2); }
+.method.post { background: rgba(251,191,36,.12);  color: var(--yellow); border: 1px solid rgba(251,191,36,.2); }
+.method.del  { background: rgba(248,113,113,.12); color: var(--red);    border: 1px solid rgba(248,113,113,.2); }
+.api-path { color: var(--cyan); font-family: var(--font-mono); flex: 1; }
+.api-desc { color: var(--dim); font-size: .76rem; }
+
+/* ── Files Tree ──────────────────────────────────────────────── */
+.file-tree {
+  background: var(--deep); border: 1px solid var(--rim); border-radius: var(--r);
+  padding: 1.5rem 1.75rem; font-size: .78rem; line-height: 2;
+}
+.ft-dir  { color: var(--cyan); font-weight: 600; }
+.ft-file { color: var(--body); }
+.ft-comm { color: var(--sub); font-size: .72rem; }
+.ft-b    { color: var(--mist); }
+
+/* ── Steps ───────────────────────────────────────────────────── */
+.steps { display: flex; flex-direction: column; gap: 1px; background: var(--rim); border: 1px solid var(--rim); border-radius: var(--r); overflow: hidden; margin: .75rem 0 1.5rem; }
+.step  { background: var(--surface); display: flex; gap: 1.25rem; padding: 1rem 1.25rem; }
+.step:hover { background: var(--raised); }
+.step-num {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--raised); border: 1px solid var(--mist);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .7rem; font-weight: 700; color: var(--cyan);
+  flex-shrink: 0; margin-top: .1rem;
+}
+.step-body strong { color: var(--head); font-size: .84rem; display: block; margin-bottom: .15rem; }
+.step-body span   { color: var(--soft); font-size: .78rem; }
+
+/* ── Client Cards ────────────────────────────────────────────── */
+.client-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1px; background: var(--rim); border: 1px solid var(--rim); border-radius: var(--r); overflow: hidden; margin-bottom: 1.5rem; }
+.client-group { background: var(--surface); padding: 1.25rem; }
+.client-group h4 { font-size: .72rem; color: var(--sub); text-transform: uppercase; letter-spacing: .12em; font-weight: 700; margin: 0 0 .75rem; }
+.client-group ul { list-style: none; }
+.client-group li { padding: .2rem 0; font-size: .8rem; color: var(--soft); }
+.client-group li::before { content: '→  '; color: var(--mist); }
+.client-group a { color: var(--body); }
+.client-group a:hover { color: var(--cyan); }
+
+/* ── Remove Section ──────────────────────────────────────────── */
+.remove-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; }
+.remove-card { background: var(--surface); border: 1px solid var(--rim); border-radius: var(--r); overflow: hidden; }
+.remove-head { padding: .75rem 1.1rem; border-bottom: 1px solid var(--rim); font-size: .78rem; font-weight: 700; color: var(--red); display: flex; align-items: center; gap: .5rem; }
+.remove-card pre { border: none; border-radius: 0; margin: 0; background: var(--deep); }
+
+/* ── Footer ──────────────────────────────────────────────────── */
+footer {
+  border-top: 1px solid var(--rim); padding: 2.5rem 0;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 1rem;
+}
+footer .copy { color: var(--mist); font-size: .75rem; }
+footer .links { display: flex; gap: 1.5rem; }
+footer .links a { color: var(--sub); font-size: .75rem; text-decoration: none; }
+footer .links a:hover { color: var(--cyan); }
+
+/* ── Divider ─────────────────────────────────────────────────── */
+.divider {
+  height: 1px; background: linear-gradient(90deg, transparent, var(--rim) 20%, var(--rim) 80%, transparent);
+  margin: 3rem 0;
+}
+
+/* ── Scroll Animation ────────────────────────────────────────── */
+.fade-in {
+  opacity: 0; transform: translateY(16px);
+  transition: opacity .5s ease, transform .5s ease;
+}
+.fade-in.visible { opacity: 1; transform: none; }
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media(max-width: 768px) {
+  .comp-grid, .feat-grid, .client-grid, .remove-grid { grid-template-columns: 1fr; }
+  .ascii { font-size: .38rem; }
+  h2 { font-size: 1.35rem; }
+  .wrapper { padding: 0 1rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="bg-glow"></div>
+
+<!-- ── Nav ─────────────────────────────────────────────────── -->
+<div class="nav-wrap">
+  <nav class="nav-inner">
+    <a href="#overview">Обзор</a>
+    <a href="#install">Установка</a>
+    <a href="#menu">Меню</a>
+    <a href="#xray">Xray</a>
+    <a href="#users">Пользователи</a>
+    <a href="#subscription">Подписка</a>
+    <a href="#mtproto">MTProto</a>
+    <a href="#hysteria">Hysteria2</a>
+    <a href="#system">Система</a>
+    <a href="#modules">Модули</a>
+    <a href="#files">Файлы</a>
+    <a href="#clients">Клиенты</a>
+  </nav>
+</div>
+
+<!-- ── Header ──────────────────────────────────────────────── -->
+<header class="site-header">
+  <div class="wrapper">
+    <div class="ascii-wrap">
+      <div class="ascii">
+██╗  ██╗██████╗  █████╗ ██╗   ██╗    ███╗   ███╗ ██████╗ ██████╗
+╚██╗██╔╝██╔══██╗██╔══██╗╚██╗ ██╔╝    ████╗ ████║██╔════╝ ██╔══██╗
+ ╚███╔╝ ██████╔╝███████║ ╚████╔╝     ██╔████╔██║██║  ███╗██████╔╝
+ ██╔██╗ ██╔══██╗██╔══██║  ╚██╔╝      ██║╚██╔╝██║██║   ██║██╔══██╗
+██╔╝ ██╗██║  ██║██║  ██║   ██║       ██║ ╚═╝ ██║╚██████╔╝██║  ██║
+╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝</div>
+    </div>
+    <h1>VPN Infrastructure Manager for Linux</h1>
+    <div class="badges">
+      <span class="badge c">v 2.6.0</span>
+      <span class="badge g">MIT License</span>
+      <span class="badge o">Ubuntu 22+ · Debian 11+</span>
+      <span class="badge p">5380 строк · 18 модулей</span>
+    </div>
+  </div>
+</header>
+
+<main>
+<div class="wrapper">
+
+<!-- ── OVERVIEW ────────────────────────────────────────────── -->
+<section id="overview" class="fade-in">
+  <div class="section-label">компоненты</div>
+  <h2>Три инструмента — один скрипт</h2>
+
+  <div class="comp-grid">
+    <div class="comp-card xray">
+      <span class="ic">🔐</span>
+      <div class="sub">Xray-core</div>
+      <h4>12 протоколов</h4>
+      <p>VLESS, VMess, Trojan, Shadowsocks 2022. REALITY и SplitHTTP без домена. XHTTP, gRPC, WebSocket, SplitHTTP/H3. Лимиты по трафику и дате.</p>
+    </div>
+    <div class="comp-card mtproto">
+      <span class="ic">📡</span>
+      <div class="sub">telemt</div>
+      <h4>MTProto Proxy</h4>
+      <p>Telegram-прокси на Rust. systemd или Docker. API без перезапуска. Лимиты подключений, IP, трафика. SSH-миграция.</p>
+    </div>
+    <div class="comp-card hysteria">
+      <span class="ic">🚀</span>
+      <div class="sub">Hysteria2</div>
+      <h4>QUIC / UDP</h4>
+      <p>Обходит TCP-блокировки и DPI. Port Hopping. ACME (LE/ZeroSSL/Buypass). BBR или Brutal. SSH-миграция с сертификатом.</p>
+    </div>
+  </div>
+
+  <div class="feat-grid">
+    <div class="feat-item"><div class="dot c"></div><div><strong>REALITY + XHTTP</strong><span>x25519, shortId — без домена и TLS-сертификата</span></div></div>
+    <div class="feat-item"><div class="dot g"></div><div><strong>Лимиты</strong><span>Дата истечения и объём трафика, автодеактивация</span></div></div>
+    <div class="feat-item"><div class="dot p"></div><div><strong>Stats API</strong><span>Трафик по пользователям через встроенный Xray API</span></div></div>
+    <div class="feat-item"><div class="dot o"></div><div><strong>BBR+</strong><span>Fast Open, буферы 26 MB, slow_start_after_idle=0</span></div></div>
+    <div class="feat-item"><div class="dot c"></div><div><strong>Бэкап</strong><span>Полное сохранение и восстановление всех конфигов</span></div></div>
+    <div class="feat-item"><div class="dot g"></div><div><strong>Миграция по SSH</strong><span>telemt и Hysteria2 — перенос на новый сервер</span></div></div>
+    <div class="feat-item"><div class="dot p"></div><div><strong>18 модулей</strong><span>Исходники разбиты, дистрибуция — один файл через <code>make build</code></span></div></div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── УСТАНОВКА ───────────────────────────────────────────── -->
+<section id="install" class="fade-in">
+  <div class="section-label">быстрый старт</div>
+  <h2>Установка</h2>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <strong>Клонировать репозиторий</strong>
+        <span>git clone или wget — один файл без внешних зависимостей</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <strong>Запустить от root</strong>
+        <span>Менеджер зарегистрирует себя как системную команду</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <strong>Установить ядро Xray</strong>
+        <span>Меню 1) — автоматически скачивает последнюю версию, включает BBR и Stats API</span>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <strong>Добавить протокол</strong>
+        <span>Меню 2) — VLESS+REALITY за 30 секунд</span>
+      </div>
+    </div>
+  </div>
+
+<pre><code><span class="cm"># Клонировать и запустить install.sh</span>
+git clone https://github.com/stump3/xray-manager.git
+cd xray-manager
+sudo bash scripts/install.sh
+
+<span class="cm"># Скрипт настроит Nginx, сертификат, Xray</span>
+<span class="cm"># После установки — глобальная команда</span>
+sudo xray-manager</code></pre>
+
+<pre><code><span class="cm"># Или скачать только скрипт</span>
+wget -qO xray-manager.sh https://raw.githubusercontent.com/stump3/xray-manager/main/xray-manager.sh
+chmod +x xray-manager.sh
+sudo bash xray-manager.sh</code></pre>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── МЕНЮ ────────────────────────────────────────────────── -->
+<section id="menu" class="fade-in">
+  <div class="section-label">навигация</div>
+  <h2>Структура меню</h2>
+
+  <div class="menu-tree">
+<div class="mt-root">Главное меню</div>
+<div><span class="mt-b">│  </span><span class="mt-s">[Xray: версия · статус · активные протоколы · IP сервера]</span></div>
+<div><span class="mt-b">│  </span><span class="mt-m">MTProto ● v1.x.x</span><span class="mt-s">   </span><span class="mt-h">Hysteria2 ● v2.x.x</span></div>
+<div><span class="mt-b">│</span></div>
+<div><span class="mt-b">├── </span><span class="mt-x">1)</span><span class="mt-s"> Установка / Обновление Xray</span></div>
+<div><span class="mt-b">│</span></div>
+<div><span class="mt-b">├── </span><span class="mt-x">2)</span><span class="mt-s"> Протоколы Xray</span></div>
+<div><span class="mt-b">│   ├── </span><span class="mt-x">VLESS + TCP + REALITY</span><span class="mt-c">         ← без домена, рекомендуется</span></div>
+<div><span class="mt-b">│   ├── </span><span class="mt-x">VLESS + XHTTP + REALITY</span><span class="mt-c">       ← CDN + прямое</span></div>
+<div><span class="mt-b">│   ├── </span><span class="mt-x">VLESS + gRPC + REALITY</span><span class="mt-c">        ← без домена</span></div>
+<div><span class="mt-b">│   ├── </span><span class="mt-x">VLESS + WebSocket / gRPC / HTTPUpgrade + TLS</span></div>
+<div><span class="mt-b">│   ├── </span><span class="mt-x">VLESS + SplitHTTP + TLS/H3</span><span class="mt-c">    ← QUIC/CDN</span></div>
+<div><span class="mt-b">│   ├── </span><span class="mt-x">VMess + WebSocket / TCP + TLS</span></div>
+<div><span class="mt-b">│   ├── </span><span class="mt-x">Trojan + TCP + TLS</span></div>
+<div><span class="mt-b">│   ├── </span><span class="mt-x">Shadowsocks 2022</span></div>
+<div><span class="mt-b">│   ├── </span><span class="mt-h">Hysteria2 (нативный Xray)</span><span class="mt-c">     ← TLS + Stats API</span></div>
+<div><span class="mt-b">│   ├── </span><span class="mt-h">Hysteria2 (отдельный бинарник)</span><span class="mt-c">  ← ACME + Masquerade</span></div>
+<div><span class="mt-b">│   └── </span><span class="mt-s">[d] Удалить протокол</span></div>
+<div><span class="mt-b">│</span></div>
+<div><span class="mt-b">├── </span><span class="mt-x">3)</span><span class="mt-s"> Пользователи Xray</span></div>
+<div><span class="mt-b">│   ├── </span><span class="mt-s">Добавить · Удалить · Список · Ссылка + QR</span></div>
+<div><span class="mt-b">│   ├── </span><span class="mt-s">Статистика трафика (↑ uplink / ↓ downlink)</span></div>
+<div><span class="mt-b">│   ├── </span><span class="mt-s">Лимит по дате и трафику (ГБ)</span></div>
+<div><span class="mt-b">│   └── </span><span class="mt-s">📡 Подписка</span></div>
+<div><span class="mt-b">│       ├── </span><span class="mt-s">Запустить / Остановить · Обновить файлы</span></div>
+<div><span class="mt-b">│       ├── </span><span class="mt-s">Показать ссылки · Подписка пользователя</span></div>
+<div><span class="mt-b">│       ├── </span><span class="mt-s">⏱ Интервал обновления (1–168 ч)</span></div>
+<div><span class="mt-b">│       └── </span><span class="mt-s">🔁 Автообновление при добавлении</span></div>
+<div><span class="mt-b">│</span></div>
+<div><span class="mt-b">├── </span><span class="mt-x">4)</span><span class="mt-s"> Управление Xray  </span><span class="mt-c">— статус · логи · гео · обновить ядро</span></div>
+<div><span class="mt-b">│</span></div>
+<div><span class="mt-b">├── </span><span class="mt-x">5)</span><span class="mt-s"> Система  </span><span class="mt-c">— BBR+ · бэкап · восстановление · таймер лимитов · Fragment · Noises · Fallbacks · Балансировщик</span></div>
+<div><span class="mt-b">│</span></div>
+<div><span class="mt-b">├── </span><span class="mt-m">6) 📡 MTProto (Telegram)</span></div>
+<div><span class="mt-b">│   ├── </span><span class="mt-s">Установка (systemd / Docker + выбор версии)</span></div>
+<div><span class="mt-b">│   ├── </span><span class="mt-s">Управление (статус API · обновить · стоп)</span></div>
+<div><span class="mt-b">│   ├── </span><span class="mt-s">Пользователи (добавить с лимитами · удалить · ссылки)</span></div>
+<div><span class="mt-b">│   ├── </span><span class="mt-s">Миграция на новый сервер по SSH</span></div>
+<div><span class="mt-b">│   └── </span><span class="mt-s">Сменить режим (systemd ↔ Docker)</span></div>
+<div><span class="mt-b">│</span></div>
+<div><span class="mt-b">└── </span><span class="mt-h">7) 🚀 Hysteria2 (QUIC/UDP)</span></div>
+<div><span class="mt-b">    ├── </span><span class="mt-s">Установка (домен · CA · порт · masquerade · алгоритм)</span></div>
+<div><span class="mt-b">    ├── </span><span class="mt-s">Управление (статус · логи · перезапуск)</span></div>
+<div><span class="mt-b">    ├── </span><span class="mt-s">Пользователи (добавить · удалить · URI + QR)</span></div>
+<div><span class="mt-b">    └── </span><span class="mt-s">Миграция (SSH + сертификат Let's Encrypt)</span></div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── XRAY ─────────────────────────────────────────────────── -->
+<section id="xray" class="fade-in">
+  <div class="section-label">протоколы</div>
+  <h2>Xray — протоколы</h2>
+
+  <div class="proto-list">
+
+    <div class="proto-card star">
+      <div class="proto-head">
+        <span class="proto-name">⭐ VLESS + TCP + REALITY</span>
+        <div class="proto-tags">
+          <span class="ptag green">Рекомендуется</span>
+          <span class="ptag cyan">Без домена</span>
+          <span class="ptag purple">XTLS Vision</span>
+        </div>
+      </div>
+      <div class="proto-body">Без домена и сертификата. Генерирует x25519 ключевую пару + shortId. Маскируется под реальный TLS 1.3. XTLS Vision устраняет двойное шифрование — многократный прирост скорости.</div>
+<pre><code>vless://UUID@IP:443?security=reality&sni=www.microsoft.com
+  &fp=firefox&pbk=PublicKey&sid=shortId&spx=%2Fa3f92e1b
+  &flow=xtls-rprx-vision&type=tcp&encryption=none</code></pre>
+    </div>
+
+    <div class="proto-card">
+      <div class="proto-head">
+        <span class="proto-name">⚡ VLESS + XHTTP + REALITY</span>
+        <div class="proto-tags">
+          <span class="ptag cyan">Без домена</span>
+          <span class="ptag yellow">Новый транспорт</span>
+          <span class="ptag orange">CDN + прямое</span>
+        </div>
+      </div>
+      <div class="proto-body">Первый нативный транспорт Xray. Режимы: <code>auto</code>, <code>packet-up</code>, <code>stream-up</code>, <code>stream-one</code>. Header padding, XMUX. Поддерживает H2, H3 и CDN одновременно. <code>sniffing.routeOnly:true</code> — sniff только для маршрутизации, не переопределяет камуфляжный <code>target</code>.</div>
+<pre><code>vless://UUID@IP:443?security=reality&type=xhttp&mode=auto
+  &sni=...&pbk=...&sid=...&encryption=none</code></pre>
+    </div>
+
+    <div class="proto-card">
+      <div class="proto-head">
+        <span class="proto-name">☁️ VLESS + WebSocket + TLS</span>
+        <div class="proto-tags">
+          <span class="ptag orange">Нужен домен</span>
+          <span class="ptag cyan">Для CDN</span>
+        </div>
+      </div>
+      <div class="proto-body">За Cloudflare и другими CDN. Xray слушает на localhost, Nginx проксирует WebSocket.</div>
+<pre><code><span class="cm"># Nginx</span>
+location /vless {
+    proxy_pass http://127.0.0.1:PORT;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}</code></pre>
+    </div>
+
+    <div class="proto-card">
+      <div class="proto-head">
+        <span class="proto-name">🔄 VLESS + gRPC + TLS</span>
+        <div class="proto-tags">
+          <span class="ptag orange">Нужен домен</span>
+          <span class="ptag cyan">HTTP/2</span>
+        </div>
+      </div>
+      <div class="proto-body">HTTP/2 мультиплексирование. В Nginx использовать <code>grpc_pass</code>, а не <code>proxy_pass</code>.</div>
+<pre><code>location /xray { grpc_pass grpc://127.0.0.1:PORT; }</code></pre>
+    </div>
+
+    <div class="proto-card">
+      <div class="proto-head">
+        <span class="proto-name">🔄 VLESS + gRPC + REALITY</span>
+        <div class="proto-tags">
+          <span class="ptag cyan">Без домена</span>
+          <span class="ptag purple">REALITY</span>
+          <span class="ptag blue">gRPC</span>
+        </div>
+      </div>
+      <div class="proto-body">gRPC-транспорт поверх REALITY. Не требует домена и TLS-сертификата — x25519 + shortId. <code>flow</code> отключён (Vision несовместим с gRPC). Пункт 12 в меню протоколов.</div>
+<pre><code>vless://UUID@IP:PORT?security=reality&sni=www.yahoo.com
+  &fp=firefox&pbk=PublicKey&sid=shortId
+  &type=grpc&serviceName=grpc&encryption=none&spx=/hex8</code></pre>
+    </div>
+
+    <div class="proto-card">
+      <div class="proto-head">
+        <span class="proto-name">🌊 VLESS + SplitHTTP + TLS/H3</span>
+        <div class="proto-tags">
+          <span class="ptag orange">Нужен домен</span>
+          <span class="ptag cyan">HTTP/3 QUIC</span>
+          <span class="ptag yellow">CDN</span>
+        </div>
+      </div>
+      <div class="proto-body">Транспорт <code>splithttp</code> поверх QUIC. Два режима ALPN: <code>h3</code> — прямое подключение, <code>h2,http/1.1</code> — через CDN. Требует открытый UDP-порт.</div>
+<pre><code><span class="cm"># h3 — прямое</span>
+"alpn": ["h3"]      — Xray ↔ клиент напрямую по QUIC
+
+<span class="cm"># CDN-режим</span>
+"alpn": ["h2","http/1.1"]   — CDN не поддерживает H3 transport</code></pre>
+    </div>
+
+        <div class="proto-card">
+      <div class="proto-head">
+        <span class="proto-name">📦 VMess + WebSocket + TLS</span>
+        <div class="proto-tags">
+          <span class="ptag orange">Нужен домен</span>
+          <span class="ptag gray">Классика</span>
+        </div>
+      </div>
+      <div class="proto-body">AlterId = 0 (AEAD). Широкая поддержка клиентами. Ссылка в формате <code>vmess://base64(JSON)</code>.</div>
+    </div>
+
+    <div class="proto-card">
+      <div class="proto-head">
+        <span class="proto-name">🔐 Trojan + TCP + TLS</span>
+        <div class="proto-tags">
+          <span class="ptag orange">Нужен домен</span>
+          <span class="ptag green">Маскировка HTTPS</span>
+        </div>
+      </div>
+      <div class="proto-body">Каждый пользователь — уникальный пароль. Трафик неотличим от обычного HTTPS.</div>
+    </div>
+
+    <div class="proto-card">
+      <div class="proto-head">
+        <span class="proto-name">🌑 Shadowsocks 2022</span>
+        <div class="proto-tags">
+          <span class="ptag cyan">Без домена</span>
+          <span class="ptag purple">Multi-user</span>
+        </div>
+      </div>
+      <div class="proto-body">Метод <code>2022-blake3-aes-256-gcm</code>. Два уровня паролей: серверный (мастер) + индивидуальный на каждого пользователя.</div>
+    </div>
+
+    <div class="proto-card" style="border-color: rgba(74,222,128,.25);">
+      <div class="proto-head">
+        <span class="proto-name" style="color:var(--green)">🚀 Hysteria2 — два варианта</span>
+      </div>
+      <div class="proto-body" style="padding-bottom:0">
+        <p style="margin-bottom:.75rem">В Xray-core встроена нативная реализация Hysteria2. Оба варианта доступны из меню протоколов:</p>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--rim);border-top:1px solid var(--rim)">
+        <div style="background:var(--surface);padding:.9rem 1.25rem">
+          <div style="font-size:.78rem;font-weight:700;color:var(--cyan);margin-bottom:.4rem">🔟 Нативный Xray</div>
+          <div style="font-size:.75rem;color:var(--soft);line-height:1.7">
+            ✅ Stats API + лимиты <code>.limits.json</code><br>
+            ✅ Port Hopping (udphop)<br>
+            ✅ Единый процесс<br>
+            ✗ Нет встроенного ACME<br>
+            ✗ Нет Masquerade
+          </div>
+        </div>
+        <div style="background:var(--surface);padding:.9rem 1.25rem">
+          <div style="font-size:.78rem;font-weight:700;color:var(--green);margin-bottom:.4rem">1⃣1⃣ Отдельный бинарник</div>
+          <div style="font-size:.75rem;color:var(--soft);line-height:1.7">
+            ✅ Встроенный ACME<br>
+            ✅ Masquerade (bing/yahoo/...)<br>
+            ✅ Port Hopping (udphop + iptables)<br>
+            ✗ Отдельная база пользователей<br>
+            ✗ Нет Stats API Xray
+          </div>
+        </div>
+      </div>
+      <pre style="border-radius:0;border-top:1px solid var(--rim);margin:0"><code><span class="cm"># Нативный Xray — inbound config</span>
+{
+  <span class="vr">"protocol"</span>: <span class="st">"hysteria"</span>,
+  <span class="vr">"streamSettings"</span>: {
+    <span class="vr">"network"</span>:  <span class="st">"hysteria"</span>,
+    <span class="vr">"security"</span>: <span class="st">"tls"</span>,
+    <span class="vr">"hysteriaSettings"</span>: {
+      <span class="vr">"version"</span>: <span class="nm">2</span>,
+      <span class="vr">"up"</span>: <span class="st">"50 mbps"</span>,  <span class="cm">// 0 = BBR</span>
+      <span class="vr">"udphop"</span>: {<span class="vr">"port"</span>: <span class="st">"20000-29999"</span>, <span class="vr">"interval"</span>: <span class="nm">30</span>}
+    }
+  }
+}</code></pre>
+    </div>
+
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── ПОЛЬЗОВАТЕЛИ ─────────────────────────────────────────── -->
+<section id="users" class="fade-in">
+  <div class="section-label">управление</div>
+  <h2>Xray — пользователи и лимиты</h2>
+
+  <p>Имя пользователя — строковый идентификатор Xray для статистики. Допустимы короткие имена: <code>alice</code>, <code>bob</code>, <code>user1</code>. Реальный email не нужен, разрешены символы <code>a-z A-Z 0-9 . _ @ -</code>, минимум 2 символа.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Лимит</th><th>Формат</th><th>Триггер</th><th>Хранение</th></tr></thead>
+      <tbody>
+        <tr><td>По дате</td><td><code>YYYY-MM-DD</code></td><td>Текущее время &gt; <code>expire_ts</code></td><td><code>.limits.json</code></td></tr>
+        <tr><td>По трафику</td><td>Число ГБ</td><td>uplink + downlink ≥ лимит</td><td><code>.limits.json</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <span class="ico">⚡</span>
+    <div><strong>Автопроверка:</strong> установите systemd-таймер через меню <strong>5) Система → 4) Таймер</strong>. Проверяет лимиты каждые 5 минут. Ручной запуск: <code>sudo xray-manager --check-limits</code></div>
+  </div>
+
+  <h3>Статистика трафика</h3>
+  <p>Данные берутся из Stats API (<code>127.0.0.1:10085</code>) через команду <code>xray api statsquery</code>. В интерфейсе отображается: ↑ uplink / ↓ downlink / = total и % от лимита.</p>
+
+  <h3>Добавление без разрыва соединений</h3>
+  <p>Пользователи добавляются и удаляются через gRPC API Xray (<code>xray api adu</code> / <code>xray api rmu</code>) — без <code>systemctl restart</code>. Существующие соединения не прерываются. Fallback на <code>restart</code> — только если Xray не активен.</p>
+
+  <h3>spiderX — уникальный краулер per-user</h3>
+  <p>Ссылки REALITY-протоколов содержат параметр <code>spx</code> — начальный путь краулера при обнаружении. Генерируется детерминированно из sha256(email): каждый пользователь получает уникальный путь, который не меняется между вызовами.</p>
+<pre><code>spx = "/" + sha256(email)[0:8]  <span class="cm">← /a3f92e1b для alice, /7c4d88f2 для bob</span></code></pre>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── ПОДПИСКА ─────────────────────────────────────────────── -->
+<section id="subscription" class="fade-in">
+  <div class="section-label">подписка</div>
+  <h2>Сервер подписки</h2>
+
+  <p>Python3-сервер на <code>127.0.0.1:PORT</code>, раздаётся через Nginx или SSH-туннель. Токен в URL обязателен — сервер слушает только на localhost.</p>
+
+  <h3>Форматы URL</h3>
+  <div class="api-list">
+    <div class="api-item"><span class="method get">GET</span><span class="api-path">/{token}/sub</span><span class="api-desc">Base64 — все пользователи (v2rayN, v2rayNG)</span></div>
+    <div class="api-item"><span class="method get">GET</span><span class="api-path">/{token}/clash</span><span class="api-desc">Clash YAML — все пользователи (Mihomo)</span></div>
+    <div class="api-item"><span class="method get">GET</span><span class="api-path">/{token}/u/{email}</span><span class="api-desc">Base64 — конкретный пользователь</span></div>
+    <div class="api-item"><span class="method get">GET</span><span class="api-path">/{token}/clash/u/{email}</span><span class="api-desc">Clash YAML — конкретный пользователь</span></div>
+  </div>
+
+  <h3>Особенности</h3>
+  <div class="feat-grid">
+    <div class="feat-item"><div class="dot c"></div><div><strong>Profile-Update-Interval</strong><span>Заголовок настраивается от 1 до 168 ч. Смена вступает в силу при следующем запросе — перезапуск не нужен.</span></div></div>
+    <div class="feat-item"><div class="dot g"></div><div><strong>Автообновление</strong><span>При включённом флаге файлы подписки пересоздаются автоматически при каждом добавлении пользователя.</span></div></div>
+    <div class="feat-item"><div class="dot p"></div><div><strong>Через Nginx</strong><span><code>location /{token}/ { proxy_pass http://127.0.0.1:PORT; }</code></span></div></div>
+    <div class="feat-item"><div class="dot o"></div><div><strong>Через SSH-туннель</strong><span><code>ssh -L PORT:127.0.0.1:PORT user@server</code></span></div></div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── MTPROTO ──────────────────────────────────────────────── -->
+<section id="mtproto" class="fade-in">
+  <div class="section-label">telegram</div>
+  <h2>📡 MTProto (telemt)</h2>
+  <p><a href="https://github.com/telemt/telemt">telemt</a> — MTProto-прокси на Rust с TLS-маскировкой, hot reload и REST API.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Режим</th><th>Бинарник</th><th>Особенности</th></tr></thead>
+      <tbody>
+        <tr><td><strong>systemd</strong></td><td>GitHub Releases, ~5 MB</td><td>Hot reload (SIGHUP), SSH-миграция, минимальный RAM</td></tr>
+        <tr><td><strong>Docker</strong></td><td>ghcr.io/telemt/telemt</td><td>Изоляция, простое обновление командой pull</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>REST API — <code>127.0.0.1:9091</code></h3>
+  <div class="api-list">
+    <div class="api-item"><span class="method get">GET</span><span class="api-path">/v1/health</span><span class="api-desc">Проверка готовности сервиса</span></div>
+    <div class="api-item"><span class="method get">GET</span><span class="api-path">/v1/users</span><span class="api-desc">Список пользователей + статистика (IP, трафик, подключения)</span></div>
+    <div class="api-item"><span class="method post">POST</span><span class="api-path">/v1/users</span><span class="api-desc">Добавить пользователя с лимитами — без перезапуска</span></div>
+    <div class="api-item"><span class="method del">DELETE</span><span class="api-path">/v1/users/:name</span><span class="api-desc">Удалить пользователя — без перезапуска</span></div>
+    <div class="api-item"><span class="method get">GET</span><span class="api-path">/v1/stats/summary</span><span class="api-desc">Uptime, total connections, bad connections</span></div>
+    <div class="api-item"><span class="method get">GET</span><span class="api-path">/v1/system/info</span><span class="api-desc">Версия, режим middle-proxy</span></div>
+  </div>
+
+  <h3>Лимиты при добавлении пользователя</h3>
+<pre><code>{
+  <span class="vr">"username"</span>:             <span class="st">"alice"</span>,
+  <span class="vr">"secret"</span>:               <span class="st">"a1b2c3d4e5f6..."</span>,    <span class="cm">// 32 hex</span>
+  <span class="vr">"max_tcp_conns"</span>:        <span class="nm">5</span>,
+  <span class="vr">"max_unique_ips"</span>:       <span class="nm">3</span>,
+  <span class="vr">"data_quota_bytes"</span>:     <span class="nm">10737418240</span>,          <span class="cm">// 10 GB</span>
+  <span class="vr">"expiration_rfc3339"</span>:  <span class="st">"2026-12-31T23:59:59Z"</span>
+}</code></pre>
+
+  <h3>Миграция на новый сервер</h3>
+  <p>Меню <strong>6) MTProto → 4) Миграция</strong>. Требуется <code>sshpass</code>. Скрипт подключается по SSH, устанавливает telemt под нужную архитектуру/libc, копирует конфиг со всеми пользователями и секретами, запускает сервис, открывает UFW.</p>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── HYSTERIA2 ────────────────────────────────────────────── -->
+<section id="hysteria" class="fade-in">
+  <div class="section-label">quic/udp</div>
+  <h2>🚀 Hysteria2</h2>
+  <p><a href="https://v2.hysteria.network/">Hysteria2</a> — высокоскоростной VPN поверх QUIC/UDP. Обходит TCP-блокировки и DPI.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Параметр</th><th>Опции</th></tr></thead>
+      <tbody>
+        <tr><td>CA</td><td>Let's Encrypt · ZeroSSL · Buypass</td></tr>
+        <tr><td>Порт</td><td>Один UDP-порт или диапазон (Port Hopping)</td></tr>
+        <tr><td>Masquerade</td><td>bing.com · yahoo.com · cdn.apple.com · hetzner · локальная заглушка · свой URL</td></tr>
+        <tr><td>Скорость</td><td>BBR (стабильный) · Brutal (агрессивный, задаёт download/upload)</td></tr>
+        <tr><td>IPv6</td><td>Автоопределение по наличию глобального адреса</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Port Hopping</h3>
+  <p>Клиент случайно выбирает порт из диапазона при каждом подключении. Эффективно против блокировки по конкретному порту.</p>
+<pre><code><span class="cm"># config.yaml</span>
+listen: <span class="st">0.0.0.0:20000-29999</span>
+
+<span class="cm"># UFW открывается автоматически</span>
+ufw allow <span class="nm">20000</span>:<span class="nm">29999</span>/udp</code></pre>
+
+  <h3>URI подключения</h3>
+<pre><code>hy2://user:pass@domain:port?sni=domain&alpn=h3&insecure=0#Name</code></pre>
+  <p>Сохраняется в <code>/root/hysteria-&lt;domain&gt;.txt</code>. Clash/Mihomo YAML — <code>/root/hysteria-&lt;domain&gt;.yaml</code>.</p>
+
+  <div class="callout warn">
+    <span class="ico">⚠️</span>
+    <div><strong>Проверка DNS перед установкой:</strong> скрипт резолвит домен через <code>dig</code>/<code>getent</code> и сравнивает A-запись с IP сервера (<code>icanhazip.com</code>). Самая частая причина ошибок при установке — несоответствие DNS. ACME HTTP-01 challenge провалится если A-запись ещё не распространилась.</div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── СИСТЕМА ──────────────────────────────────────────────── -->
+<section id="system" class="fade-in">
+  <div class="section-label">утилиты</div>
+  <h2>Система</h2>
+
+  <h3>BBR+</h3>
+<pre><code><span class="cm"># /etc/sysctl.d/99-xray-tune.conf</span>
+net.ipv4.tcp_congestion_control  = <span class="st">bbr</span>
+net.core.default_qdisc           = <span class="st">fq</span>
+net.ipv4.tcp_fastopen            = <span class="nm">3</span>       <span class="cm"># SYN + SYN-ACK</span>
+net.ipv4.tcp_slow_start_after_idle = <span class="nm">0</span>   <span class="cm"># нет замедления после паузы</span>
+net.core.rmem_max                = <span class="nm">26214400</span> <span class="cm"># 26 MB буфер приёма</span>
+net.core.wmem_max                = <span class="nm">26214400</span> <span class="cm"># 26 MB буфер передачи</span></code></pre>
+
+  <h3>Бэкап и восстановление</h3>
+  <p>Бэкапы сохраняются в <code>/root/xray-backups/xray-backup-YYYYMMDD_HHMMSS.tar.gz</code> и содержат <code>config.json</code>, <code>.keys.*</code> и <code>.limits.json</code>. Автоматически хранятся последние 7 архивов — старые удаляются при создании нового.</p>
+
+  <div class="callout info">
+    <span class="ico">🔒</span>
+    <div><strong>Защита при восстановлении:</strong> перед распаковкой все пути проверяются через <code>tar -tz</code>. Whitelist покрывает оба варианта путей в архиве: с <code>./</code>-префиксом и без. Файлы за пределами <code>/usr/local/etc/xray/</code> — ошибка и отмена (защита от path traversal).</div>
+  </div>
+
+  <h3>Таймер лимитов</h3>
+<pre><code><span class="cm"># systemd timer — каждые 5 минут</span>
+xray-manager → 5) Система → 4) Таймер
+
+<span class="cm"># Ручной запуск без UI</span>
+sudo xray-manager --check-limits</code></pre>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── МОДУЛИ ─────────────────────────────────────────────── -->
+<section id="modules" class="fade-in">
+  <div class="section-label">архитектура</div>
+  <h2>Модульная структура</h2>
+
+  <p>Скрипт разбит на 18 модулей. Дистрибуция — один файл, собираемый через <code>make build</code> (<code>cat modules/*.sh > xray-manager.sh</code>). Никаких <code>source</code> в рантайме — <code>trap</code>, <code>_TMPFILES</code>, <code>set -euo pipefail</code> работают без изменений.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Модуль</th><th>Строк</th><th>Содержимое</th></tr></thead>
+      <tbody>
+        <tr><td><code>00-header.sh</code></td><td>13</td><td>shebang · trap _cleanup EXIT · _TMPFILES=() · set -euo pipefail</td></tr>
+        <tr><td><code>01-constants.sh</code></td><td>32</td><td>MANAGER_VERSION · пути · ANSI-цвета</td></tr>
+        <tr><td><code>02-ui.sh</code></td><td>109</td><td>box_* · ask · confirm · spin_start/stop · ok/err/warn/info</td></tr>
+        <tr><td><code>03-system.sh</code></td><td>71</td><td>need_root · install_deps · server_ip · BBR</td></tr>
+        <tr><td><code>04-xray-core.sh</code></td><td>104</td><td>install_xray_core · _init_config · _enable_stats_api</td></tr>
+        <tr><td><code>05-config.sh</code></td><td>67</td><td>cfg/cfgw · ib_* · kset/kget · xray_restart · gRPC API</td></tr>
+        <tr><td><code>06-limits.sh</code></td><td>141</td><td>limit_* · check_limits · fmt_bytes · systemd timer</td></tr>
+        <tr><td><code>07-links.sh</code></td><td>182</td><td>gen_link · urlencode · show_link_qr · pick_inbound</td></tr>
+        <tr><td><code>08-protocols.sh</code></td><td>1091</td><td>все proto_* (12 протоколов) · fragment · fallbacks · balancer</td></tr>
+        <tr><td><code>09-users.sh</code></td><td>544</td><td>menu_protocols · user_add/del/list/link/stats/set_limit</td></tr>
+        <tr><td><code>10-manage.sh</code></td><td>71</td><td>menu_manage · show_global_stats · update_geodata</td></tr>
+        <tr><td><code>11-subscription.sh</code></td><td>674</td><td>_sub_* · menu_subscription · sub_setup/interval/autoupdate</td></tr>
+        <tr><td><code>12-system.sh</code></td><td>126</td><td>menu_system · do_backup · do_restore · do_remove_all</td></tr>
+        <tr><td><code>13-compat.sh</code></td><td>58</td><td>NC/die/header · SSH helpers (RUN/PUT) · compat aliases</td></tr>
+        <tr><td><code>14-telemt.sh</code></td><td>622</td><td>MTProto — установка, управление, пользователи, миграция</td></tr>
+        <tr><td><code>15-hysteria2.sh</code></td><td>541</td><td>Hysteria2 standalone — ACME, Port Hopping, миграция</td></tr>
+        <tr><td><code>16-routing.sh</code></td><td>834</td><td>routing_* · menu_routing · profiles (save/load/delete)</td></tr>
+        <tr><td><code>99-main.sh</code></td><td>100</td><td>main_menu · entrypoint</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+<pre><code><span class="cm"># Сборка из модулей</span>
+make build      <span class="cm"># cat modules/*.sh > xray-manager.sh + bash -n</span>
+make check      <span class="cm"># shellcheck -S warning по всем модулям</span>
+make release    <span class="cm"># сборка + chmod + sha256sum</span>
+make ls         <span class="cm"># таблица модулей с размерами</span></code></pre>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── ФАЙЛЫ ───────────────────────────────────────────────── -->
+<section id="files" class="fade-in">
+  <div class="section-label">файловая система</div>
+  <h2>Структура файлов</h2>
+
+  <div class="file-tree">
+<span class="ft-dir">xray-manager/  </span><span class="ft-comm">← репозиторий</span>
+<span class="ft-b">├── </span><span class="ft-file">Makefile</span><span class="ft-comm">                      ← make build / check / release</span>
+<span class="ft-b">├── </span><span class="ft-file">xray-manager.sh</span><span class="ft-comm">               ← артефакт сборки (не редактируется напрямую)</span>
+<span class="ft-b">├── </span><span class="ft-dir">modules/</span><span class="ft-comm">                      ← 18 исходных модулей (00–99)</span>
+<span class="ft-b">├── </span><span class="ft-dir">nginx/</span><span class="ft-comm">                        ← nginx.conf, sites/vpn.conf</span>
+<span class="ft-b">├── </span><span class="ft-dir">configs/xray/</span><span class="ft-comm">                 ← config.example.json</span>
+<span class="ft-b">├── </span><span class="ft-dir">scripts/</span><span class="ft-comm">                      ← install.sh, certbot-deploy-hook.sh</span>
+<span class="ft-b">└── </span><span class="ft-dir">docs/</span><span class="ft-comm">                         ← CHANGELOG.md, ENGINEERING.md, setup.md, README.html</span>
+
+<span class="ft-dir">/usr/local/bin/</span>
+<span class="ft-b">├── </span><span class="ft-file">xray</span><span class="ft-comm">                           ← бинарник Xray-core</span>
+<span class="ft-b">├── </span><span class="ft-file">xray-manager</span><span class="ft-comm">                  ← этот скрипт</span>
+<span class="ft-b">├── </span><span class="ft-file">telemt</span><span class="ft-comm">                        ← MTProto прокси</span>
+<span class="ft-b">└── </span><span class="ft-file">hysteria</span><span class="ft-comm">                      ← Hysteria2</span>
+
+<span class="ft-dir">/usr/local/etc/xray/</span>
+<span class="ft-b">├── </span><span class="ft-file">config.json</span><span class="ft-comm">                   ← конфигурация Xray (inbounds, routing, stats)</span>
+<span class="ft-b">├── </span><span class="ft-file">.keys.&lt;tag&gt;</span><span class="ft-comm">                   ← ключи протокола (x25519, shortId, sni)</span>
+<span class="ft-b">├── </span><span class="ft-file">.limits.json</span><span class="ft-comm">                  ← лимиты пользователей (expire_ts, quota)</span>
+<span class="ft-b">└── </span><span class="ft-dir">subscriptions/</span><span class="ft-comm">                ← файлы сервера подписки</span>
+<span class="ft-b">    ├── </span><span class="ft-file">.token · .port · .interval · .autoupdate</span>
+<span class="ft-b">    ├── </span><span class="ft-file">all.b64 · all.clash.yaml</span><span class="ft-comm">  ← общие подписки</span>
+<span class="ft-b">    └── </span><span class="ft-file">user_*.b64 · user_*.clash.yaml</span><span class="ft-comm"> ← по пользователям</span>
+
+<span class="ft-dir">/etc/telemt/</span>
+<span class="ft-b">└── </span><span class="ft-file">telemt.toml</span><span class="ft-comm">                   ← конфиг MTProto (пользователи, API, TLS)</span>
+<span class="ft-dir">/opt/telemt/tlsfront/</span><span class="ft-comm">              ← TLS front данные</span>
+<span class="ft-dir">~/mtproxy/</span><span class="ft-comm">                         ← Docker-режим MTProto</span>
+
+<span class="ft-dir">/etc/hysteria/</span>
+<span class="ft-b">└── </span><span class="ft-file">config.yaml</span><span class="ft-comm">                   ← конфиг Hysteria2 (userpass, acme, masquerade)</span>
+
+<span class="ft-dir">/root/</span>
+<span class="ft-b">├── </span><span class="ft-dir">xray-backups/</span><span class="ft-comm">                 ← бэкапы .tar.gz</span>
+<span class="ft-b">├── </span><span class="ft-file">hysteria-&lt;domain&gt;.txt</span><span class="ft-comm">        ← URI основного пользователя</span>
+<span class="ft-b">└── </span><span class="ft-file">hysteria-&lt;domain&gt;-users.txt</span><span class="ft-comm">  ← URI дополнительных</span>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── КЛИЕНТЫ ─────────────────────────────────────────────── -->
+<section id="clients" class="fade-in">
+  <div class="section-label">подключение</div>
+  <h2>Клиенты</h2>
+
+  <div class="client-grid">
+    <div class="client-group">
+      <h4>Windows</h4>
+      <ul>
+        <li><a href="https://github.com/2dust/v2rayN">v2rayN</a></li>
+        <li><a href="https://github.com/LorenEteval/Furious">Furious</a></li>
+        <li><a href="https://github.com/MetaCubeX/mihomo">Mihomo</a></li>
+      </ul>
+    </div>
+    <div class="client-group">
+      <h4>Android</h4>
+      <ul>
+        <li><a href="https://github.com/2dust/v2rayNG">v2rayNG</a></li>
+        <li><a href="https://github.com/MetaCubeX/mihomo">Mihomo</a></li>
+      </ul>
+    </div>
+    <div class="client-group">
+      <h4>iOS / macOS</h4>
+      <ul>
+        <li><a href="https://apps.apple.com/app/happ-proxy-utility/id6504287215">Happ</a></li>
+        <li><a href="https://apps.apple.com/app/streisand/id6450534064">Streisand</a></li>
+      </ul>
+    </div>
+    <div class="client-group">
+      <h4>macOS desktop</h4>
+      <ul>
+        <li><a href="https://github.com/yanue/V2rayU">V2rayU</a></li>
+        <li><a href="https://github.com/tzmax/V2RayXS">V2RayXS</a></li>
+        <li><a href="https://github.com/2dust/v2rayN">v2rayN</a></li>
+      </ul>
+    </div>
+    <div class="client-group">
+      <h4>Linux</h4>
+      <ul>
+        <li><a href="https://github.com/v2rayA/v2rayA">v2rayA</a></li>
+        <li><a href="https://github.com/LorenEteval/Furious">Furious</a></li>
+        <li><a href="https://github.com/MetaCubeX/mihomo">Mihomo CLI</a></li>
+      </ul>
+    </div>
+    <div class="client-group">
+      <h4>MTProto</h4>
+      <ul>
+        <li>Встроенный Telegram</li>
+        <li>Ссылка <code>tg://proxy?...</code></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <span class="ico">ℹ️</span>
+    <div><strong>Hysteria2 + Clash/Mihomo:</strong> скрипт генерирует готовый YAML-файл <code>/root/hysteria-&lt;domain&gt;.yaml</code>, который можно использовать напрямую как конфиг Mihomo.</div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── УДАЛЕНИЕ ─────────────────────────────────────────────── -->
+<section class="fade-in">
+  <div class="section-label">деинсталляция</div>
+  <h2>Удаление</h2>
+
+  <div class="remove-grid">
+    <div class="remove-card">
+      <div class="remove-head">🔐 Xray</div>
+<pre><code>bash -c "$(curl -L \
+  https://github.com/XTLS/Xray-install/\
+raw/main/install-release.sh)" \
+  @ remove --purge
+rm -f /usr/local/etc/xray/.keys.*
+rm -f /usr/local/etc/xray/.limits.json
+rm -f /usr/local/bin/xray-manager</code></pre>
+    </div>
+    <div class="remove-card">
+      <div class="remove-head">📡 MTProto</div>
+<pre><code>systemctl stop telemt
+systemctl disable telemt
+rm -f /usr/local/bin/telemt
+rm -f /etc/systemd/system/\
+      telemt.service
+rm -rf /etc/telemt /opt/telemt
+systemctl daemon-reload</code></pre>
+    </div>
+    <div class="remove-card">
+      <div class="remove-head">🚀 Hysteria2</div>
+<pre><code>systemctl stop hysteria-server
+systemctl disable hysteria-server
+bash &lt;(curl -fsSL \
+  https://get.hy2.sh/) --remove
+rm -rf /etc/hysteria</code></pre>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+<section class="fade-in">
+  <div class="section-label">история изменений</div>
+  <h2>Changelog</h2>
+  <div class="callout info">
+    <span class="ico">📋</span>
+    <div>Полная история изменений — в <a href="CHANGELOG.md"><strong>CHANGELOG.md</strong></a>. Последний релиз: <strong>v2.6.0</strong> — модульная архитектура (18 модулей), новые протоколы gRPC+REALITY и SplitHTTP/H3, исправления из Xray-examples.</div>
+  </div>
+</section>
+
+</div><!-- /wrapper -->
+</main>
+
+<!-- ── Footer ──────────────────────────────────────────────── -->
+<div class="wrapper">
+  <footer>
+    <div class="copy">Xray Manager v2.6.0 · MIT License</div>
+    <div class="links">
+      <a href="https://github.com/stump3/xray-manager">GitHub</a>
+      <a href="https://github.com/XTLS/Xray-core">Xray-core</a>
+      <a href="https://github.com/telemt/telemt">telemt</a>
+      <a href="https://v2.hysteria.network">Hysteria2</a>
+      <a href="docs/CHANGELOG.md">Changelog</a>
+      <a href="docs/ENGINEERING.md">Engineering</a>
+    </div>
+  </footer>
+</div>
+
+<script>
+// Scroll animations
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+document.querySelectorAll('.fade-in').forEach(el => obs.observe(el));
+
+// Nav active state
+const sections = document.querySelectorAll('section[id]');
+const navLinks = document.querySelectorAll('.nav-inner a');
+window.addEventListener('scroll', () => {
+  let cur = '';
+  sections.forEach(s => { if (window.scrollY >= s.offsetTop - 120) cur = s.id; });
+  navLinks.forEach(a => {
+    a.style.color = a.getAttribute('href') === '#' + cur ? 'var(--cyan)' : '';
+    a.style.borderBottomColor = a.getAttribute('href') === '#' + cur ? 'rgba(77,217,232,.5)' : '';
+  });
+}, { passive: true });
+</script>
+</body>
+</html>
