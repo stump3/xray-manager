@@ -278,7 +278,17 @@ install_self() {
 }
 
 _init_config() {
-    [[ -f "$XRAY_CONF" ]] && return
+    # Если файл существует — проверяем что он наш (содержит нужные блоки).
+    # install-release.sh создаёт минимальный config.json без stats/api/policy.
+    # В этом случае перезаписываем поверх.
+    if [[ -f "$XRAY_CONF" ]]; then
+        local has_stats; has_stats=$(jq -r '.stats // empty' "$XRAY_CONF" 2>/dev/null || echo "")
+        local has_api;   has_api=$(jq -r '.api.tag // empty' "$XRAY_CONF" 2>/dev/null || echo "")
+        local has_policy; has_policy=$(jq -r '.policy // empty' "$XRAY_CONF" 2>/dev/null || echo "")
+        # Если все три блока присутствуют — конфиг уже наш, не трогаем
+        [[ -n "$has_stats" && -n "$has_api" && -n "$has_policy" ]] && return
+        warn "config.json не содержит stats/api/policy — пересоздаём (был создан install-release.sh)..."
+    fi
     cat > "$XRAY_CONF" << 'JSON'
 {
   "log": {"loglevel": "warning", "access": "/var/log/xray/access.log", "error": "/var/log/xray/error.log"},
@@ -5284,39 +5294,37 @@ main_menu() {
         local w; w=$(tw); local i=$((w-2))
         printf "${DIM}╭%s╮${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
         printf "${DIM}│${R}  ${CYAN}${BOLD}%-*s${R}${DIM}│${R}\n" $((i-3)) "██╗  ██╗██████╗  █████╗ ██╗   ██╗    ███╗   ███╗ ██████╗ ██████╗"
-        printf "${DIM}│${R}  ${CYAN}%-*s${R}${DIM}│${R}\n" $((i-3)) "╚██╗██╔╝██╔══██╗██╔══██╗╚██╗ ██╔╝    ████╗ ████║██╔════╝ ██╔══██╗"
-        printf "${DIM}│${R}  ${CYAN}%-*s${R}${DIM}│${R}\n" $((i-3)) " ╚███╔╝ ██████╔╝███████║ ╚████╔╝     ██╔████╔██║██║  ███╗██████╔╝"
-        printf "${DIM}│${R}  ${CYAN}%-*s${R}${DIM}│${R}\n" $((i-3)) " ██╔██╗ ██╔══██╗██╔══██║  ╚██╔╝      ██║╚██╔╝██║██║   ██║██╔══██╗"
-        printf "${DIM}│${R}  ${CYAN}%-*s${R}${DIM}│${R}\n" $((i-3)) "██╔╝ ██╗██║  ██║██║  ██║   ██║       ██║ ╚═╝ ██║╚██████╔╝██║  ██║"
-        printf "${DIM}│${R}  ${CYAN}%-*s${R}${DIM}│${R}\n" $((i-3)) "╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝"
-        printf "${DIM}│${R}  ${DIM}%-*s${R}${DIM}│${R}\n" $((i-3)) "Manager v${MANAGER_VERSION}  •  VLESS • VMess • Trojan • SS2022 • MTProto • Hysteria2"
+        printf "${DIM}│${R}  ${CYAN}%-*s${R}${DIM}│${R}\n" $((i-2)) "╚██╗██╔╝██╔══██╗██╔══██╗╚██╗ ██╔╝    ████╗ ████║██╔════╝ ██╔══██╗"
+        printf "${DIM}│${R}  ${CYAN}%-*s${R}${DIM}│${R}\n" $((i-2)) " ╚███╔╝ ██████╔╝███████║ ╚████╔╝     ██╔████╔██║██║  ███╗██████╔╝"
+        printf "${DIM}│${R}  ${CYAN}%-*s${R}${DIM}│${R}\n" $((i-2)) " ██╔██╗ ██╔══██╗██╔══██║  ╚██╔╝      ██║╚██╔╝██║██║   ██║██╔══██╗"
+        printf "${DIM}│${R}  ${CYAN}%-*s${R}${DIM}│${R}\n" $((i-2)) "██╔╝ ██╗██║  ██║██║  ██║   ██║       ██║ ╚═╝ ██║╚██████╔╝██║  ██║"
+        printf "${DIM}│${R}  ${CYAN}%-*s${R}${DIM}│${R}\n" $((i-2)) "╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝"
+        printf "${DIM}│${R}  ${DIM}%-*s${R}${DIM}│${R}\n" $((i-2)) "Manager v${MANAGER_VERSION}  •  VLESS • VMess • Trojan • SS2022 • MTProto • Hysteria2"
         printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
 
-        # Статус Xray
+        # Статус Xray — используем box_row для корректного выравнивания с кириллицей
         local xver; xver=$(xray_ver)
         local sip; sip=$(server_ip)
         local st_ic st_tx
         if ! xray_ok; then st_ic="${RED}✗${R}"; st_tx="${RED}не установлен${R}"
         elif xray_active; then st_ic="${GREEN}●${R}"; st_tx="${GREEN}работает${R}"
         else st_ic="${YELLOW}○${R}"; st_tx="${YELLOW}остановлен${R}"; fi
-        printf "${DIM}│${R}  Xray: %b ${CYAN}%s${R}  %b  IP: ${YELLOW}%s${R}%-*s${DIM}│${R}\n" \
-            "$st_ic" "$xver" "$st_tx" "$sip" $((i-52)) ""
+        box_row "  Xray: ${st_ic} ${CYAN}${xver}${R}  ${st_tx}  IP: ${YELLOW}${sip}${R}"
 
         # Статус подписки
         if _sub_is_running 2>/dev/null; then
             local _sp; _sp=$(_sub_get_port 2>/dev/null || echo "?")
-            printf "${DIM}│${R}  📡 Подписка: ${GREEN}●${R} ${DIM}:${_sp}${R}%-*s${DIM}│${R}\n" $((i-26)) ""
+            box_row "  📡 Подписка: ${GREEN}●${R} ${DIM}:${_sp}${R}"
         fi
 
         # Протоколы Xray
         local pc=0
         while IFS='|' read -r tag port proto net sec; do
             local uc; uc=$(ib_users_count "$tag")
-            printf "${DIM}│${R}  • ${CYAN}%-20s${R} ${DIM}порт %-6s${R} ${YELLOW}%s польз.${R}%-*s${DIM}│${R}\n" \
-                "$tag" "$port" "$uc" $((i-44)) ""
+            box_row "  • ${CYAN}${tag}${R}  ${DIM}порт ${port}${R}  ${YELLOW}${uc} польз.${R}"
             ((pc++))
         done < <(ib_list)
-        [[ $pc -eq 0 ]] && printf "${DIM}│${R}  ${DIM}%-*s${R}${DIM}│${R}\n" $((i-3)) "Xray-протоколы не настроены"
+        [[ $pc -eq 0 ]] && box_row "  ${DIM}Xray-протоколы не настроены${R}"
 
         # Статус MTProto
         local mt_st=""; local hy_st=""
@@ -5340,13 +5348,10 @@ main_menu() {
         # Строка роутинга с активным профилем
         local _rp; _rp=$(routing_active_profile 2>/dev/null || echo "custom")
         local _rn; _rn=$(routing_rules_count 2>/dev/null || echo 0)
-        printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${CYAN}Маршрутизация${R}  ${DIM}профиль: %s · %s правил${R}%-*s${DIM}│${R}\n" \
-            "R" "🗺" "$_rp" "$_rn" $((i-56)) ""
+        mi "R" "🗺" "${CYAN}Маршрутизация${R}" "${DIM}профиль: ${_rp} · ${_rn} правил${R}"
         printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
-        printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${MAGENTA}MTProto (Telegram)${R}%-*s${DIM}%s │${R}\n" \
-            "6" "📡" $((i-40)) "" "$mt_st"
-        printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${ORANGE}Hysteria2 (QUIC/UDP)${R}%-*s${DIM}%s │${R}\n" \
-            "7" "🚀" $((i-42)) "" "$hy_st"
+        mi "6" "📡" "${MAGENTA}MTProto (Telegram)${R}"    "$mt_st"
+        mi "7" "🚀" "${ORANGE}Hysteria2 (QUIC/UDP)${R}"   "$hy_st"
         printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
         mi "0" "🚪" "Выход"
         printf "${DIM}╰%s╯${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
