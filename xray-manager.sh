@@ -93,11 +93,14 @@ mi() {
     local n="$1" ic="$2" lb="$3" badge="${4:-}"
     local w; w=$(tw); local i=$((w-2))
     local raw_lb; raw_lb=$(printf "%b" "$lb" | sed 's/\x1b\[[0-9;]*m//g')
+    # Стрипаем ANSI из badge для корректного расчёта ширины
+    local raw_badge; raw_badge=$(printf "%b" "$badge" | sed 's/\x1b\[[0-9;]*m//g')
     local used=$(( ${#n} + ${#raw_lb} + 8 ))
-    local pad=$(( i - used - ${#badge} - 1 ))
+    local pad=$(( i - used - ${#raw_badge} - 1 ))
     [[ $pad -lt 0 ]] && pad=0
     if [[ -n "$badge" ]]; then
-        printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s %b%*s${DIM}%s │${R}\n" \
+        # %b интерпретирует \e escape-коды в badge (статусы MTProto/Hysteria2)
+        printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s %b%*s${DIM}%b │${R}\n" \
             "$n" "$ic" "$lb" "$pad" "" "$badge"
     else
         printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s %b%*s${DIM}│${R}\n" \
@@ -368,9 +371,15 @@ ib_add() {
 xray_restart() {
     chown nobody:nogroup "$XRAY_CONF" 2>/dev/null || true
     chmod 640 "$XRAY_CONF"
-    systemctl restart xray 2>/dev/null
+    systemctl restart xray 2>/dev/null || true
     sleep 1
-    xray_active
+    # Намеренно всегда возвращаем 0 — set -e не должен убивать меню
+    # если Xray не поднялся (например занят порт). Пользователь увидит
+    # статус в шапке главного меню при следующем открытии.
+    if ! xray_active 2>/dev/null; then
+        warn "Xray не запустился — проверь порт: journalctl -u xray -n 5 --no-pager"
+    fi
+    return 0
 }
 # Добавить пользователя в работающий Xray без перезапуска (gRPC API)
 xray_api_add_user() {
@@ -5352,10 +5361,12 @@ main_menu() {
         printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${CYAN}Маршрутизация${R}  ${DIM}профиль: %s · %s правил${R}%-*s${DIM}│${R}\n" \
             "R" "🗺" "$_rp" "$_rn" $((i-56)) ""
         printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
+        local _raw_mt; _raw_mt=$(printf "%b" "$mt_st" | sed 's/\x1b\[[0-9;]*m//g')
+        local _raw_hy; _raw_hy=$(printf "%b" "$hy_st" | sed 's/\x1b\[[0-9;]*m//g')
         printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${MAGENTA}MTProto (Telegram)${R}%-*s${DIM}%b │${R}\n" \
-            "6" "📡" $((i-40)) "" "$mt_st"
+            "6" "📡" $((i-40-${#_raw_mt})) "" "$mt_st"
         printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${ORANGE}Hysteria2 (QUIC/UDP)${R}%-*s${DIM}%b │${R}\n" \
-            "7" "🚀" $((i-42)) "" "$hy_st"
+            "7" "🚀" $((i-42-${#_raw_hy})) "" "$hy_st"
         printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
         mi "0" "🚪" "Выход"
         printf "${DIM}╰%s╯${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"

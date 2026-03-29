@@ -63,10 +63,12 @@ main_menu() {
         printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${CYAN}Маршрутизация${R}  ${DIM}профиль: %s · %s правил${R}%-*s${DIM}│${R}\n" \
             "R" "🗺" "$_rp" "$_rn" $((i-56)) ""
         printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
+        local _raw_mt; _raw_mt=$(printf "%b" "$mt_st" | sed 's/\x1b\[[0-9;]*m//g')
+        local _raw_hy; _raw_hy=$(printf "%b" "$hy_st" | sed 's/\x1b\[[0-9;]*m//g')
         printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${MAGENTA}MTProto (Telegram)${R}%-*s${DIM}%b │${R}\n" \
-            "6" "📡" $((i-40)) "" "$mt_st"
+            "6" "📡" $((i-40-${#_raw_mt})) "" "$mt_st"
         printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${ORANGE}Hysteria2 (QUIC/UDP)${R}%-*s${DIM}%b │${R}\n" \
-            "7" "🚀" $((i-42)) "" "$hy_st"
+            "7" "🚀" $((i-42-${#_raw_hy})) "" "$hy_st"
         printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
         mi "0" "🚪" "Выход"
         printf "${DIM}╰%s╯${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"

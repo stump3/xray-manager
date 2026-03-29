@@ -36,9 +36,15 @@ ib_add() {
 xray_restart() {
     chown nobody:nogroup "$XRAY_CONF" 2>/dev/null || true
     chmod 640 "$XRAY_CONF"
-    systemctl restart xray 2>/dev/null
+    systemctl restart xray 2>/dev/null || true
     sleep 1
-    xray_active
+    # Намеренно всегда возвращаем 0 — set -e не должен убивать меню
+    # если Xray не поднялся (например занят порт). Пользователь увидит
+    # статус в шапке главного меню при следующем открытии.
+    if ! xray_active 2>/dev/null; then
+        warn "Xray не запустился — проверь порт: journalctl -u xray -n 5 --no-pager"
+    fi
+    return 0
 }
 # Добавить пользователя в работающий Xray без перезапуска (gRPC API)
 xray_api_add_user() {
