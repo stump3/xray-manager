@@ -33,7 +33,13 @@ ib_add() {
     jq --argjson ib "$json" '.inbounds += [$ib]' "$XRAY_CONF" > "$tmp" && mv "$tmp" "$XRAY_CONF"
 }
 
-xray_restart() { systemctl restart xray 2>/dev/null; sleep 1; xray_active; }
+xray_restart() {
+    chown nobody:nogroup "$XRAY_CONF" 2>/dev/null || true
+    chmod 640 "$XRAY_CONF"
+    systemctl restart xray 2>/dev/null
+    sleep 1
+    xray_active
+}
 # Добавить пользователя в работающий Xray без перезапуска (gRPC API)
 xray_api_add_user() {
     local tag="$1" client_json="$2" proto="$3" net="$4"

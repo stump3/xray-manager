@@ -63,9 +63,9 @@ main_menu() {
         printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${CYAN}Маршрутизация${R}  ${DIM}профиль: %s · %s правил${R}%-*s${DIM}│${R}\n" \
             "R" "🗺" "$_rp" "$_rn" $((i-56)) ""
         printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
-        printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${MAGENTA}MTProto (Telegram)${R}%-*s${DIM}%s │${R}\n" \
+        printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${MAGENTA}MTProto (Telegram)${R}%-*s${DIM}%b │${R}\n" \
             "6" "📡" $((i-40)) "" "$mt_st"
-        printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${ORANGE}Hysteria2 (QUIC/UDP)${R}%-*s${DIM}%s │${R}\n" \
+        printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${ORANGE}Hysteria2 (QUIC/UDP)${R}%-*s${DIM}%b │${R}\n" \
             "7" "🚀" $((i-42)) "" "$hy_st"
         printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
         mi "0" "🚪" "Выход"
