@@ -2,8 +2,35 @@
 #  КЛЮЧИ ПРОТОКОЛОВ
 # ──────────────────────────────────────────────────────────────────────────────
 
+xray_run_user() {
+    local u
+    u=$(systemctl show xray -p User --value 2>/dev/null || true)
+    [[ -z "$u" ]] && u="nobody"
+    echo "$u"
+}
+
+xray_run_group() {
+    local g
+    g=$(systemctl show xray -p Group --value 2>/dev/null || true)
+    [[ -z "$g" ]] && g="nogroup"
+    echo "$g"
+}
+
+fix_xray_file_perms() {
+    local f="$1"
+    chown "$(xray_run_user)":"$(xray_run_group)" "$f" 2>/dev/null || true
+    chmod 640 "$f" 2>/dev/null || true
+}
+
 kfile()   { echo "${XRAY_KEYS_DIR}/.keys.${1}"; }
-kset()    { local f; f=$(kfile "$1"); local _kt; _kt=$(mktemp); _TMPFILES+=("$_kt"); grep -v "^${2}:" "$f" 2>/dev/null > "$_kt" || true; echo "${2}: ${3}" >> "$_kt"; mv "$_kt" "$f"; }
+kset()    {
+    local f; f=$(kfile "$1")
+    local _kt; _kt=$(mktemp); _TMPFILES+=("$_kt")
+    grep -v "^${2}:" "$f" 2>/dev/null > "$_kt" || true
+    echo "${2}: ${3}" >> "$_kt"
+    mv "$_kt" "$f"
+    fix_xray_file_perms "$f"
+}
 kget()    { grep "^${2}:" "$(kfile "$1")" 2>/dev/null | cut -d' ' -f2-; }
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -11,7 +38,13 @@ kget()    { grep "^${2}:" "$(kfile "$1")" 2>/dev/null | cut -d' ' -f2-; }
 # ──────────────────────────────────────────────────────────────────────────────
 
 cfg()     { jq -r "$1" "$XRAY_CONF" 2>/dev/null; }
-cfgw()    { local t; t=$(mktemp); _TMPFILES+=("$t"); jq "$1" "$XRAY_CONF" > "$t" && mv "$t" "$XRAY_CONF"; }
+cfgw()    {
+    local t; t=$(mktemp); _TMPFILES+=("$t")
+    jq "$1" "$XRAY_CONF" > "$t" || return 1
+    jq empty "$t" >/dev/null 2>&1 || { rm -f "$t"; return 1; }
+    mv "$t" "$XRAY_CONF"
+    fix_xray_file_perms "$XRAY_CONF"
+}
 ib_exists() { [[ -n "$(jq -r --arg t "$1" '.inbounds[]|select(.tag==$t)|.tag' "$XRAY_CONF" 2>/dev/null)" ]]; }
 ib_list()   { jq -r '.inbounds[]|select(.tag!="api")|"\(.tag)|\(.port)|\(.protocol)|\(.streamSettings.network//"tcp")|\(.streamSettings.security//"none")"' "$XRAY_CONF" 2>/dev/null; }
 ib_del()    { cfgw "del(.inbounds[]|select(.tag==\"$1\"))"; }
@@ -34,8 +67,10 @@ ib_add() {
 }
 
 xray_restart() {
-    chown nobody:nogroup "$XRAY_CONF" 2>/dev/null || true
-    chmod 640 "$XRAY_CONF"
+    fix_xray_file_perms "$XRAY_CONF"
+    for _kf in "${XRAY_KEYS_DIR}"/.keys.*; do
+        [[ -f "$_kf" ]] && fix_xray_file_perms "$_kf"
+    done
     systemctl restart xray 2>/dev/null || true
     sleep 1
     # Намеренно всегда возвращаем 0 — set -e не должен убивать меню
