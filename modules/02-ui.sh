@@ -6,6 +6,25 @@ tw() { tput cols 2>/dev/null || echo 80; }
 
 cls() { printf "\e[2J\e[H"; }
 
+strip_ansi() {
+    printf "%b" "$1" | sed 's/\x1b\[[0-9;]*m//g'
+}
+
+vwidth() {
+    local s; s=$(strip_ansi "$1")
+    # Bash считает большинство emoji как 1 символ, но в терминале они часто занимают 2 колонки.
+    # Для стабильной верстки учитываем используемые в меню emoji вручную.
+    s=${s//⚙️/XX}
+    s=${s//♻️/XX}
+    s=${s//🛠/XX}
+    s=${s//🗺/XX}
+    s=${s//📡/XX}
+    s=${s//🚀/XX}
+    s=${s//🛡️/XX}
+    s=${s//⚖️/XX}
+    echo "${#s}"
+}
+
 box_top() {
     local title="$1" col="${2:-$CYAN}"
     local w; w=$(tw); local i=$((w-2))
@@ -29,8 +48,8 @@ box_mid() {
 box_row() {
     local text="$1"
     local w; w=$(tw); local i=$((w-2))
-    local raw; raw=$(printf "%b" "$text" | sed 's/\x1b\[[0-9;]*m//g')
-    local rl=${#raw}; local pad=$((i - rl - 2))
+    local rl; rl=$(vwidth "$text")
+    local pad=$((i - rl - 2))
     [[ $pad -lt 0 ]] && pad=0
     printf "${DIM}│${R} %b%*s${DIM}│${R}\n" "$text" "$pad" ""
 }
@@ -44,11 +63,8 @@ mi() {
     # menu_item num icon label [badge]
     local n="$1" ic="$2" lb="$3" badge="${4:-}"
     local w; w=$(tw); local i=$((w-2))
-    local raw_lb; raw_lb=$(printf "%b" "$lb" | sed 's/\x1b\[[0-9;]*m//g')
-    # Стрипаем ANSI из badge для корректного расчёта ширины
-    local raw_badge; raw_badge=$(printf "%b" "$badge" | sed 's/\x1b\[[0-9;]*m//g')
-    local used=$(( ${#n} + ${#raw_lb} + 8 ))
-    local pad=$(( i - used - ${#raw_badge} - 1 ))
+    local used=$(( $(vwidth "$n") + $(vwidth "$ic") + $(vwidth "$lb") + 5 ))
+    local pad=$(( i - used - $(vwidth "$badge") ))
     [[ $pad -lt 0 ]] && pad=0
     if [[ -n "$badge" ]]; then
         # %b интерпретирует \e escape-коды в badge (статусы MTProto/Hysteria2)
@@ -109,4 +125,3 @@ hr() {
     local w; w=$(tw)
     printf "${DIM}%s${R}\n" "$(printf '%*s' "$w" | tr ' ' '─')"
 }
-
