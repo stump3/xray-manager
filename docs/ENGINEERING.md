@@ -457,6 +457,105 @@ masquerade:
 
 ---
 
+## Удаление / чистая переустановка
+
+Порядок важен: сначала официальный uninstall-скрипт XTLS (он корректно убирает systemd-юнит `xray.service`), затем всё остальное вручную.
+
+### 1. Xray-core — официальный uninstall
+
+```bash
+bash -c "$(curl -4 -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ remove --purge
+```
+
+Убирает: `/usr/local/bin/xray`, `/etc/systemd/system/xray.service`, `/usr/local/share/xray/`.
+
+### 2. xray-manager + systemd-таймер лимитов
+
+```bash
+systemctl disable --now xray-limits.timer xray-limits.service 2>/dev/null || true
+rm -f /usr/local/bin/xray-manager
+rm -f /etc/systemd/system/xray-limits.service
+rm -f /etc/systemd/system/xray-limits.timer
+systemctl daemon-reload
+```
+
+### 3. Конфиги, ключи, логи
+
+```bash
+rm -rf /usr/local/etc/xray/
+rm -rf /var/log/xray/
+rm -rf /usr/local/share/xray/
+rm -f /root/.xray-mgr-install
+```
+
+### 4. Nginx
+
+```bash
+rm -f /etc/nginx/sites-enabled/vpn.conf
+rm -f /etc/nginx/sites-available/vpn.conf
+rm -f /etc/nginx/sites-available/acme-temp.conf
+rm -f /etc/nginx/stream.d/stream-443.conf
+# Восстановить оригинальный nginx.conf, если был сохранён бэкап
+ls /etc/nginx/nginx.conf.bak.* 2>/dev/null && \
+  cp "$(ls -t /etc/nginx/nginx.conf.bak.* | head -1)" /etc/nginx/nginx.conf
+nginx -t && systemctl reload nginx
+```
+
+### 5. Let's Encrypt
+
+```bash
+rm -f /etc/letsencrypt/renewal-hooks/deploy/reload-services.sh
+# Удалить сертификат (замени домен на свой)
+certbot delete --cert-name vpn.example.com --non-interactive
+```
+
+### 6. Hysteria2 (если устанавливался)
+
+```bash
+systemctl disable --now hysteria-server 2>/dev/null || true
+rm -f /usr/local/bin/hysteria
+rm -rf /etc/hysteria/
+rm -f /etc/systemd/system/hysteria-server.service
+systemctl daemon-reload
+```
+
+### 7. Опционально — бэкапы и UFW
+
+```bash
+rm -rf /root/xray-backups/
+# Убрать нестандартный порт REALITY (если менялся, например 8443)
+ufw delete allow 8443/tcp 2>/dev/null || true
+# Порты 22, 80, 443 трогать не нужно
+```
+
+### Финальная проверка
+
+```bash
+which xray xray-manager 2>/dev/null || echo "OK: бинарники удалены"
+ls /usr/local/etc/xray/ 2>/dev/null || echo "OK: конфиг-директория удалена"
+systemctl list-units --all | grep -E "xray|hysteria" || echo "OK: сервисы отсутствуют"
+ls /etc/nginx/sites-enabled/
+```
+
+### Известная проблема: xray.service в состоянии failed
+
+После официального uninstall сервис может остаться в статусе `failed` (юнит-файл удалён, но запись в systemd не сброшена). Симптом в `list-units`:
+
+```
+● xray.service   not-found failed   failed
+```
+
+Исправление:
+
+```bash
+systemctl reset-failed xray.service 2>/dev/null || true
+rm -f /etc/systemd/system/xray.service
+rm -f /etc/systemd/system/xray@.service
+systemctl daemon-reload
+```
+
+---
+
 ## Тестирование
 
 ```bash
