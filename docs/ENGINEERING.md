@@ -495,6 +495,7 @@ rm -f /etc/nginx/sites-enabled/vpn.conf
 rm -f /etc/nginx/sites-available/vpn.conf
 rm -f /etc/nginx/sites-available/acme-temp.conf
 rm -f /etc/nginx/stream.d/stream-443.conf
+rm -f /etc/nginx/conf.d/stream-443.conf
 # Восстановить оригинальный nginx.conf, если был сохранён бэкап
 ls /etc/nginx/nginx.conf.bak.* 2>/dev/null && \
   cp "$(ls -t /etc/nginx/nginx.conf.bak.* | head -1)" /etc/nginx/nginx.conf
