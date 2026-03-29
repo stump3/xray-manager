@@ -128,7 +128,7 @@ if [[ ${#NEED[@]} -gt 0 ]]; then
 fi
 
 # nginx stream модуль нужен если USE_STREAM=true
-if $USE_STREAM && ! nginx -V 2>&1 | grep -q "http_v2_module\|stream"; then
+if $USE_STREAM && ! nginx -V 2>&1 | grep -q "stream_module\|ngx_stream"; then
     spin_start "nginx-full (stream module)"
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nginx-full 2>/dev/null
     spin_stop
@@ -209,6 +209,17 @@ HOOK_DST="/etc/letsencrypt/renewal-hooks/deploy/reload-services.sh"
 [[ -f "$HOOK_SRC" ]] && { cp "$HOOK_SRC" "$HOOK_DST"; chmod +x "$HOOK_DST"; }
 
 # ── Основной nginx vhost ──────────────────────────────────────
+# Устанавливаем базовый nginx.conf с поддержкой stream.d (если ещё не наш)
+NGINX_CONF_SRC="${REPO_DIR}/nginx/nginx.conf"
+if [[ -f "$NGINX_CONF_SRC" ]]; then
+    if ! grep -q "stream.d" /etc/nginx/nginx.conf 2>/dev/null; then
+        cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.bak.$(date +%Y%m%d_%H%M%S)
+        cp "$NGINX_CONF_SRC" /etc/nginx/nginx.conf
+        mkdir -p /etc/nginx/stream.d
+        info "nginx.conf обновлён (добавлена поддержка stream.d)"
+    fi
+fi
+
 VHOST_SRC="${REPO_DIR}/nginx/sites/vpn.conf"
 VHOST_DST="/etc/nginx/sites-available/vpn.conf"
 
@@ -232,6 +243,9 @@ sed \
     sed -i "/ssl_certificate_key/a\\${H2_EXTRA}" "$VHOST_DST"
 
 # ── Nginx stream для REALITY на 443 ──────────────────────────
+# ВАЖНО: stream {} должен быть на корневом уровне nginx.conf, НЕ внутри http {}.
+# Файл пишется в /etc/nginx/stream.d/ и подключается через include вне http {}.
+# nginx.conf из репозитория уже содержит: include /etc/nginx/stream.d/*.conf;
 if $USE_STREAM; then
     # Nginx слушает на 127.0.0.1:4443 с proxy_protocol
     sed -i \
@@ -242,7 +256,8 @@ if $USE_STREAM; then
     # Stream-конфиг: SNI-маршрутизация на 443
     # Трафик на домен → nginx (HTTPS), всё остальное (REALITY) → Xray
     # Xray REALITY слушает на 127.0.0.1:${REALITY_PORT} (или напрямую если нужно)
-    cat > /etc/nginx/conf.d/stream-443.conf << STREAM_CONF
+    mkdir -p /etc/nginx/stream.d
+    cat > /etc/nginx/stream.d/stream-443.conf << STREAM_CONF
 stream {
     map \$ssl_preread_server_name \$backend {
         ~^(.+\\.)?$(echo "$DOMAIN" | sed 's/\./\\./g')\$ nginx_https;
