@@ -54,6 +54,25 @@ tw() { tput cols 2>/dev/null || echo 80; }
 
 cls() { printf "\e[2J\e[H"; }
 
+strip_ansi() {
+    printf "%b" "$1" | sed 's/\x1b\[[0-9;]*m//g'
+}
+
+vwidth() {
+    local s; s=$(strip_ansi "$1")
+    # Bash считает большинство emoji как 1 символ, но в терминале они часто занимают 2 колонки.
+    # Для стабильной верстки учитываем используемые в меню emoji вручную.
+    s=${s//⚙️/XX}
+    s=${s//♻️/XX}
+    s=${s//🛠/XX}
+    s=${s//🗺/XX}
+    s=${s//📡/XX}
+    s=${s//🚀/XX}
+    s=${s//🛡️/XX}
+    s=${s//⚖️/XX}
+    echo "${#s}"
+}
+
 box_top() {
     local title="$1" col="${2:-$CYAN}"
     local w; w=$(tw); local i=$((w-2))
@@ -77,8 +96,8 @@ box_mid() {
 box_row() {
     local text="$1"
     local w; w=$(tw); local i=$((w-2))
-    local raw; raw=$(printf "%b" "$text" | sed 's/\x1b\[[0-9;]*m//g')
-    local rl=${#raw}; local pad=$((i - rl - 2))
+    local rl; rl=$(vwidth "$text")
+    local pad=$((i - rl - 2))
     [[ $pad -lt 0 ]] && pad=0
     printf "${DIM}│${R} %b%*s${DIM}│${R}\n" "$text" "$pad" ""
 }
@@ -92,11 +111,8 @@ mi() {
     # menu_item num icon label [badge]
     local n="$1" ic="$2" lb="$3" badge="${4:-}"
     local w; w=$(tw); local i=$((w-2))
-    local raw_lb; raw_lb=$(printf "%b" "$lb" | sed 's/\x1b\[[0-9;]*m//g')
-    # Стрипаем ANSI из badge для корректного расчёта ширины
-    local raw_badge; raw_badge=$(printf "%b" "$badge" | sed 's/\x1b\[[0-9;]*m//g')
-    local used=$(( ${#n} + ${#raw_lb} + 8 ))
-    local pad=$(( i - used - ${#raw_badge} - 1 ))
+    local used=$(( $(vwidth "$n") + $(vwidth "$ic") + $(vwidth "$lb") + 5 ))
+    local pad=$(( i - used - $(vwidth "$badge") ))
     [[ $pad -lt 0 ]] && pad=0
     if [[ -n "$badge" ]]; then
         # %b интерпретирует \e escape-коды в badge (статусы MTProto/Hysteria2)
@@ -337,8 +353,35 @@ _enable_stats_api() {
 #  КЛЮЧИ ПРОТОКОЛОВ
 # ──────────────────────────────────────────────────────────────────────────────
 
+xray_run_user() {
+    local u
+    u=$(systemctl show xray -p User --value 2>/dev/null || true)
+    [[ -z "$u" ]] && u="nobody"
+    echo "$u"
+}
+
+xray_run_group() {
+    local g
+    g=$(systemctl show xray -p Group --value 2>/dev/null || true)
+    [[ -z "$g" ]] && g="nogroup"
+    echo "$g"
+}
+
+fix_xray_file_perms() {
+    local f="$1"
+    chown "$(xray_run_user)":"$(xray_run_group)" "$f" 2>/dev/null || true
+    chmod 640 "$f" 2>/dev/null || true
+}
+
 kfile()   { echo "${XRAY_KEYS_DIR}/.keys.${1}"; }
-kset()    { local f; f=$(kfile "$1"); local _kt; _kt=$(mktemp); _TMPFILES+=("$_kt"); grep -v "^${2}:" "$f" 2>/dev/null > "$_kt" || true; echo "${2}: ${3}" >> "$_kt"; mv "$_kt" "$f"; }
+kset()    {
+    local f; f=$(kfile "$1")
+    local _kt; _kt=$(mktemp); _TMPFILES+=("$_kt")
+    grep -v "^${2}:" "$f" 2>/dev/null > "$_kt" || true
+    echo "${2}: ${3}" >> "$_kt"
+    mv "$_kt" "$f"
+    fix_xray_file_perms "$f"
+}
 kget()    { grep "^${2}:" "$(kfile "$1")" 2>/dev/null | cut -d' ' -f2-; }
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -346,7 +389,13 @@ kget()    { grep "^${2}:" "$(kfile "$1")" 2>/dev/null | cut -d' ' -f2-; }
 # ──────────────────────────────────────────────────────────────────────────────
 
 cfg()     { jq -r "$1" "$XRAY_CONF" 2>/dev/null; }
-cfgw()    { local t; t=$(mktemp); _TMPFILES+=("$t"); jq "$1" "$XRAY_CONF" > "$t" && mv "$t" "$XRAY_CONF"; }
+cfgw()    {
+    local t; t=$(mktemp); _TMPFILES+=("$t")
+    jq "$1" "$XRAY_CONF" > "$t" || return 1
+    jq empty "$t" >/dev/null 2>&1 || { rm -f "$t"; return 1; }
+    mv "$t" "$XRAY_CONF"
+    fix_xray_file_perms "$XRAY_CONF"
+}
 ib_exists() { [[ -n "$(jq -r --arg t "$1" '.inbounds[]|select(.tag==$t)|.tag' "$XRAY_CONF" 2>/dev/null)" ]]; }
 ib_list()   { jq -r '.inbounds[]|select(.tag!="api")|"\(.tag)|\(.port)|\(.protocol)|\(.streamSettings.network//"tcp")|\(.streamSettings.security//"none")"' "$XRAY_CONF" 2>/dev/null; }
 ib_del()    { cfgw "del(.inbounds[]|select(.tag==\"$1\"))"; }
@@ -369,8 +418,10 @@ ib_add() {
 }
 
 xray_restart() {
-    chown nobody:nogroup "$XRAY_CONF" 2>/dev/null || true
-    chmod 640 "$XRAY_CONF"
+    fix_xray_file_perms "$XRAY_CONF"
+    for _kf in "${XRAY_KEYS_DIR}"/.keys.*; do
+        [[ -f "$_kf" ]] && fix_xray_file_perms "$_kf"
+    done
     systemctl restart xray 2>/dev/null || true
     sleep 1
     # Намеренно всегда возвращаем 0 — set -e не должен убивать меню
