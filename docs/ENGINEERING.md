@@ -454,6 +454,8 @@ masquerade:
 | 5 | BBR требует ядро ≥ 4.9 | Предупреждение в UI, нефатально |
 | 6 | Shadowsocks multi-user URI — нестандартный формат | Часть клиентов не поддерживает |
 | 7 | REALITY+Cloudflare dest: CF работает как прокси для любого | Dokodemo-door защита (roadmap) |
+| 8 | `config.json` пишется от `root`, сервис читает от `nobody` → `permission denied` после смены конфига | `chown nobody:nogroup /usr/local/etc/xray/config.json` (см. раздел Удаление / переустановка) |
+| 9 | `sudo xray-manager` сбрасывает `TERM` → меню не рендерится | Запускать как `xray-manager` (уже root) или `sudo TERM=$TERM xray-manager` |
 
 ---
 
@@ -495,7 +497,7 @@ rm -f /etc/nginx/sites-enabled/vpn.conf
 rm -f /etc/nginx/sites-available/vpn.conf
 rm -f /etc/nginx/sites-available/acme-temp.conf
 rm -f /etc/nginx/stream.d/stream-443.conf
-rm -f /etc/nginx/conf.d/stream-443.conf
+rm -f /etc/nginx/conf.d/stream-443.conf   # ← от старых установок, conf.d тоже чистим
 # Восстановить оригинальный nginx.conf, если был сохранён бэкап
 ls /etc/nginx/nginx.conf.bak.* 2>/dev/null && \
   cp "$(ls -t /etc/nginx/nginx.conf.bak.* | head -1)" /etc/nginx/nginx.conf
@@ -536,6 +538,29 @@ which xray xray-manager 2>/dev/null || echo "OK: бинарники удален
 ls /usr/local/etc/xray/ 2>/dev/null || echo "OK: конфиг-директория удалена"
 systemctl list-units --all | grep -E "xray|hysteria" || echo "OK: сервисы отсутствуют"
 ls /etc/nginx/sites-enabled/
+```
+
+### Известная проблема: права на config.json
+
+Xray-core запускается от пользователя `nobody`, но менеджер пишет `config.json` от `root`. После каждого изменения конфига через менеджер права сбрасываются → сервис падает с `permission denied`.
+
+Быстрый фикс (до исправления в коде):
+
+```bash
+chown nobody:nogroup /usr/local/etc/xray/config.json
+chown nobody:nogroup /usr/local/etc/xray/.keys.* 2>/dev/null || true
+chmod 640 /usr/local/etc/xray/config.json
+systemctl start xray
+```
+
+Правильное исправление — добавить в `xray_restart()` в `05-config.sh`:
+
+```bash
+xray_restart() {
+    chown nobody:nogroup "$XRAY_CONF" 2>/dev/null || true
+    chmod 640 "$XRAY_CONF"
+    systemctl restart xray
+}
 ```
 
 ### Известная проблема: xray.service в состоянии failed
