@@ -39,8 +39,42 @@ _SPIN=""
 
 [[ "$(id -u)" -eq 0 ]] || { err "Запускать от root: sudo bash $0"; exit 1; }
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(dirname "$SCRIPT_DIR")"
+# Надёжное определение REPO_DIR — работает при curl|bash, bash scripts/install.sh,
+# и bash /absolute/path/scripts/install.sh.
+# BASH_SOURCE[0] пуст или "/dev/stdin" при curl|bash → dirname даёт "/dev" или "."
+# В этом случае fallback: ищем репо рядом с CWD или в /root/xray-manager.
+_detect_repo_dir() {
+    # Попытка 1: из BASH_SOURCE (работает при bash scripts/install.sh из репо)
+    local _src="${BASH_SOURCE[0]:-}"
+    if [[ -n "$_src" && "$_src" != "/dev/stdin" && "$_src" != "bash" ]]; then
+        local _sdir; _sdir="$(cd "$(dirname "$_src")" 2>/dev/null && pwd)"
+        local _rdir; _rdir="$(dirname "$_sdir")"
+        if [[ -f "${_rdir}/nginx/sites/vpn.conf" ]]; then
+            echo "$_rdir"; return
+        fi
+    fi
+    # Попытка 2: CWD содержит nginx/sites/vpn.conf (запуск из корня репо)
+    if [[ -f "$(pwd)/nginx/sites/vpn.conf" ]]; then
+        echo "$(pwd)"; return
+    fi
+    # Попытка 3: CWD — это scripts/, репо — родитель
+    if [[ -f "$(dirname "$(pwd)")/nginx/sites/vpn.conf" ]]; then
+        echo "$(dirname "$(pwd)")"; return
+    fi
+    # Попытка 4: стандартный путь клона
+    for _try in /root/xray-manager /root/xray-manager-main /opt/xray-manager; do
+        [[ -f "${_try}/nginx/sites/vpn.conf" ]] && { echo "$_try"; return; }
+    done
+    echo ""
+}
+REPO_DIR="$(_detect_repo_dir)"
+if [[ -z "$REPO_DIR" ]]; then
+    err "Не удалось найти файлы репозитория (nginx/sites/vpn.conf)."
+    err "Запускай так: cd /path/to/xray-manager && sudo bash scripts/install.sh"
+    exit 1
+fi
+SCRIPT_DIR="${REPO_DIR}/scripts"
+info "Репозиторий: ${REPO_DIR}"
 
 clear
 printf "\n${CYAN}${BOLD}"
