@@ -6,8 +6,20 @@ proto_vless_tcp_reality() {
     cls; box_top " 🌐  VLESS + TCP + REALITY" "$CYAN"
     box_blank
     xray_ok || { box_row "  ${RED}Установите ядро Xray!${R}"; box_end; pause; return; }
+
+    # Если установлен nginx stream режим — порт и адрес берём из сохранённых параметров
+    local _stream_port=""
+    [[ -f /root/.xray-reality-local-port ]] && _stream_port=$(cat /root/.xray-reality-local-port)
+
+    if [[ -n "$_stream_port" ]]; then
+        box_row "  ${YELLOW}ℹ Обнаружен nginx stream — REALITY маршрутизируется через порт ${_stream_port}${R}"
+        box_row "  ${DIM}Xray будет слушать на 127.0.0.1:${_stream_port} (nginx stream → Xray)${R}"
+        box_blank
+    fi
+
     local port sni tag
-    ask "Порт" port "443"
+    local _default_port="${_stream_port:-443}"
+    ask "Порт (Xray inbound)" port "$_default_port"
     ask "SNI (камуфляжный домен)" sni "www.microsoft.com"
     ask "Тег (уникальный ID)" tag "vless-reality"
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
@@ -23,8 +35,9 @@ proto_vless_tcp_reality() {
     kset "$tag" port "$port"; kset "$tag" type "vless-reality"
     local ib; ib=$(jq -n \
         --arg tag "$tag" --argjson port "$port" --arg uuid "$uuid" \
-        --arg priv "$priv" --arg sni "$sni" --arg sid "$sid" '{
-        "tag":$tag,"listen":"0.0.0.0","port":$port,"protocol":"vless",
+        --arg priv "$priv" --arg sni "$sni" --arg sid "$sid" \
+        --arg listen "$_listen_addr" '{
+        "tag":$tag,"listen":$listen,"port":$port,"protocol":"vless",
         "settings":{"clients":[{"email":"main","id":$uuid,"flow":"xtls-rprx-vision"}],"decryption":"none"},
         "streamSettings":{"network":"tcp","security":"reality","realitySettings":{
             "show":false,"target":($sni+":443"),"xver":0,

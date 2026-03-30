@@ -86,7 +86,7 @@ cat << 'BANNER'
  ██╔╝ ██╗██║  ██║██║  ██║   ██║       ██║ ╚═╝ ██║╚██████╔╝██║  ██║
  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝
 BANNER
-printf "${R}\n  ${DIM}Установка стека v2.7.1${R}\n\n"
+printf "${R}\n  ${DIM}Установка стека v2.7.2${R}\n\n"
 
 # ── Параметры ─────────────────────────────────────────────────
 ask_val "Ваш домен (напр. vpn.example.com)" DOMAIN ""
@@ -293,27 +293,41 @@ if $USE_STREAM; then
     # Stream-конфиг: SNI-маршрутизация на 443
     # Трафик на домен → nginx (HTTPS), всё остальное (REALITY) → Xray
     # Xray REALITY слушает на 127.0.0.1:${REALITY_PORT} (или напрямую если нужно)
+    # Xray REALITY слушает на localhost-порту, а не на 0.0.0.0:443
+    # Чтобы не конфликтовать с nginx stream на 443.
+    # Если REALITY_PORT=443 — Xray уходит на внутренний порт 18443.
+    local XRAY_LOCAL_PORT="${REALITY_PORT}"
+    [[ "$REALITY_PORT" == "443" ]] && XRAY_LOCAL_PORT="18443"
+
     mkdir -p /etc/nginx/stream.d
     cat > /etc/nginx/stream.d/stream-443.conf << STREAM_CONF
 stream {
+    # SNI-маршрутизация:
+    #   домен сервера  → nginx HTTPS (${NGINX_PORT})
+    #   всё остальное  → Xray REALITY (127.0.0.1:${XRAY_LOCAL_PORT})
     map \$ssl_preread_server_name \$backend {
-        ~^(.+\\.)?$(echo "$DOMAIN" | sed 's/\./\\./g')\$ nginx_https;
-        default                                          nginx_https;
+        ~^(.+\.)?$(echo "$DOMAIN" | sed 's/\./\./g')\$  nginx_https;
+        default                                            xray_reality;
     }
-    upstream nginx_https { server 127.0.0.1:${NGINX_PORT}; }
+    upstream nginx_https  { server 127.0.0.1:${NGINX_PORT}; }
+    upstream xray_reality { server 127.0.0.1:${XRAY_LOCAL_PORT}; }
     server {
         listen 443;
         listen [::]:443;
-        proxy_pass     \$backend;
-        ssl_preread    on;
-        proxy_protocol on;
+        proxy_pass  \$backend;
+        ssl_preread on;
+        # proxy_protocol НЕ включаем для xray_reality — Xray его не ожидает
+        # Nginx передаёт поток как есть, Xray видит настоящий TLS ClientHello
     }
 }
 STREAM_CONF
 
-    ok "Nginx stream: 443 → SNI → nginx(${NGINX_PORT})"
-    info "Xray REALITY будет слушать на 0.0.0.0:${REALITY_PORT} напрямую"
-    info "Добавь правило роутинга в stream если захочешь пробросить REALITY через 443"
+    # Сохраняем порт для proto_vless_tcp_reality
+    echo "${XRAY_LOCAL_PORT}" > /root/.xray-reality-local-port
+
+    ok "Nginx stream: 443 → SNI → nginx(${NGINX_PORT}) | Xray(${XRAY_LOCAL_PORT})"
+    info "При добавлении VLESS+REALITY используй порт: ${XRAY_LOCAL_PORT} (не 443)"
+    warn "Xray должен слушать на 127.0.0.1:${XRAY_LOCAL_PORT}, а не 0.0.0.0:443"
 fi
 
 ln -sf "$VHOST_DST" /etc/nginx/sites-enabled/vpn.conf
