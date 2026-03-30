@@ -13,8 +13,8 @@ proto_vless_tcp_reality() {
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
     spin_start "Генерация ключей x25519"
     local kout; kout=$("$XRAY_BIN" x25519 2>/dev/null)
-    local priv; priv=$(echo "$kout" | awk '/PrivateKey/{print $2}')
-    local pub;  pub=$(echo "$kout" | awk '/PublicKey/{print $2}')
+    local priv; priv=$(echo "$kout" | grep -i 'private' | awk '{print $NF}')
+    local pub;  pub=$(echo "$kout" | grep -i 'public'  | awk '{print $NF}')
     local sid;  sid=$(openssl rand -hex 8)
     local uuid; uuid=$("$XRAY_BIN" uuid 2>/dev/null)
     spin_stop "ok"
@@ -56,8 +56,8 @@ proto_vless_xhttp_reality() {
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
     spin_start "Генерация ключей"
     local kout; kout=$("$XRAY_BIN" x25519 2>/dev/null)
-    local priv; priv=$(echo "$kout" | awk '/PrivateKey/{print $2}')
-    local pub;  pub=$(echo "$kout" | awk '/PublicKey/{print $2}')
+    local priv; priv=$(echo "$kout" | grep -i 'private' | awk '{print $NF}')
+    local pub;  pub=$(echo "$kout" | grep -i 'public'  | awk '{print $NF}')
     local sid;  sid=$(openssl rand -hex 8)
     local uuid; uuid=$("$XRAY_BIN" uuid 2>/dev/null)
     spin_stop "ok"
@@ -997,8 +997,8 @@ proto_vless_grpc_reality() {
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
     spin_start "Генерация ключей x25519"
     local kout; kout=$("$XRAY_BIN" x25519 2>/dev/null)
-    local priv; priv=$(echo "$kout" | awk '/PrivateKey/{print $2}')
-    local pub;  pub=$(echo "$kout"  | awk '/PublicKey/{print $2}')
+    local priv; priv=$(echo "$kout" | grep -i 'private' | awk '{print $NF}')
+    local pub;  pub=$(echo "$kout"  | grep -i 'public'  | awk '{print $NF}')
     local sid;  sid=$(openssl rand -hex 8)
     local uuid; uuid=$("$XRAY_BIN" uuid 2>/dev/null)
     spin_stop "ok"
