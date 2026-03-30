@@ -1,6 +1,6 @@
 # Пошаговая установка
 
-> **Версия:** 2.6.0 · [README](../README.md) · [CHANGELOG](CHANGELOG.md)
+> **Версия:** 2.7.0 · [README](../README.md) · [CHANGELOG](CHANGELOG.md)
 
 ## Архитектура
 
