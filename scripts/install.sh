@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════
-#  Xray Manager — интерактивная установка v2.7.2
+#  Xray Manager — интерактивная установка v2.7.1
 #  Запуск: sudo bash scripts/install.sh
 # ══════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -207,9 +207,17 @@ server {
 ACME_CONF
 ln -sf /etc/nginx/sites-available/acme-temp.conf \
        /etc/nginx/sites-enabled/acme-temp.conf 2>/dev/null || true
-rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
-nginx -t -q && systemctl restart nginx
-ok "Nginx запущен (временный ACME-конфиг)"
+# При переустановке старый vpn.conf остаётся в sites-enabled и конфликтует
+# с acme-temp по server_name на 80 → убираем до nginx -t
+rm -f /etc/nginx/sites-enabled/default \
+      /etc/nginx/sites-enabled/vpn.conf 2>/dev/null || true
+if nginx -t -q 2>/dev/null && systemctl restart nginx; then
+    ok "Nginx запущен (временный ACME-конфиг)"
+else
+    # nginx -t вывел ошибки выше (-q не подавляет emerg/warn)
+    warn "nginx -t вернул ошибку — пробуем продолжить"
+    systemctl restart nginx 2>/dev/null || true
+fi
 
 # ══════════════════════════════════════════════════════════════
 step 4 "TLS-сертификат"
@@ -296,7 +304,7 @@ if $USE_STREAM; then
     # Xray REALITY слушает на localhost-порту, а не на 0.0.0.0:443
     # Чтобы не конфликтовать с nginx stream на 443.
     # Если REALITY_PORT=443 — Xray уходит на внутренний порт 18443.
-    local XRAY_LOCAL_PORT="${REALITY_PORT}"
+    XRAY_LOCAL_PORT="${REALITY_PORT}"
     [[ "$REALITY_PORT" == "443" ]] && XRAY_LOCAL_PORT="18443"
 
     mkdir -p /etc/nginx/stream.d
@@ -332,6 +340,17 @@ fi
 
 ln -sf "$VHOST_DST" /etc/nginx/sites-enabled/vpn.conf
 rm -f /etc/nginx/sites-enabled/acme-temp.conf
+
+# ssl_stapling работает только если сертификат содержит OCSP URL.
+# Let's Encrypt через certbot — содержит. Через acme.sh без флага — может не содержать.
+# Проверяем и отключаем stapling если URL нет, чтобы не получать [warn] при старте.
+CERT_FILE="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
+if [[ -f "$CERT_FILE" ]] && ! openssl x509 -in "$CERT_FILE" -noout -text 2>/dev/null | grep -q "OCSP"; then
+    sed -i 's/ssl_stapling\s*on/ssl_stapling off/' "$VHOST_DST" 2>/dev/null || true
+    sed -i 's/ssl_stapling_verify\s*on/ssl_stapling_verify off/' "$VHOST_DST" 2>/dev/null || true
+    info "ssl_stapling отключён — сертификат не содержит OCSP URL"
+fi
+
 nginx -t -q && systemctl restart nginx
 ok "Nginx настроен (порт ${NGINX_PORT})"
 
