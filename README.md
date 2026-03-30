@@ -12,7 +12,7 @@ Bash-инструмент для управления VPN-сервером на 
 ## Быстрый старт
 
 ```bash
-git clone https://github.com/YOUR/xray-manager.git
+git clone https://github.com/stump3/xray-manager.git
 cd xray-manager
 sudo bash scripts/install.sh
 ```
