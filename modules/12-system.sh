@@ -112,16 +112,30 @@ do_remove_all() {
     box_blank; box_end
     confirm "Вы уверены?" "n" || return
     confirm "Последнее предупреждение. Продолжить?" "n" || return
+    
+    # 🔧 БАГ 4 FIX: удалить ВСЕ следы установки
     bash -c "$(curl -4 -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" \
         @ remove --purge 2>/dev/null || true
-    rm -f "$XRAY_CONF" "$LIMITS_FILE" "${XRAY_KEYS_DIR}"/.keys.* "$MANAGER_BIN"
+    
+    # Xray конфиги и ключи
+    rm -f "$XRAY_CONF" "$LIMITS_FILE" "${XRAY_KEYS_DIR}"/.keys.* 
+    
+    # Nginx конфиги (все xray-related файлы)
+    rm -f /etc/nginx/conf.d/xray*.conf /etc/nginx/conf.d/*-vless*.conf /etc/nginx/conf.d/*-reality*.conf \
+          /etc/nginx/conf.d/*-vmess*.conf /etc/nginx/conf.d/*-trojan*.conf /etc/nginx/conf.d/*-hysteria*.conf \
+          /etc/nginx/conf.d/stream.d/*.conf 2>/dev/null || true
+    
+    # Параметры установки
     rm -f /root/.xray-mgr-install
-    rm -f /etc/systemd/system/xray-limits.service /etc/systemd/system/xray-limits.timer
-    rm -f /etc/nginx/sites-enabled/vpn.conf /etc/nginx/sites-available/vpn.conf
-    rm -f /etc/nginx/stream.d/stream-443.conf
+    
+    # Менеджер бинарник
+    rm -f "$MANAGER_BIN"
+    
+    # Systemd таймеры для лимитов
     systemctl disable --now xray-limits.timer 2>/dev/null || true
+    rm -f /etc/systemd/system/xray-limits.* 2>/dev/null || true
     systemctl daemon-reload 2>/dev/null || true
-    nginx -t -q 2>/dev/null && systemctl reload nginx 2>/dev/null || true
+    
     ok "Xray полностью удалён"; exit 0
 }
 

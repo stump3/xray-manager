@@ -1,257 +1,329 @@
-<div align="center">
+# Xray Manager v2.7.0
 
-```
-██╗  ██╗██████╗  █████╗ ██╗   ██╗    ███╗   ███╗ ██████╗ ██████╗
-╚██╗██╔╝██╔══██╗██╔══██╗╚██╗ ██╔╝    ████╗ ████║██╔════╝ ██╔══██╗
- ╚███╔╝ ██████╔╝███████║ ╚████╔╝     ██╔████╔██║██║  ███╗██████╔╝
- ██╔██╗ ██╔══██╗██╔══██║  ╚██╔╝      ██║╚██╔╝██║██║   ██║██╔══██╗
-██╔╝ ██╗██║  ██║██║  ██║   ██║       ██║ ╚═╝ ██║╚██████╔╝██║  ██║
-╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝
-```
+**Production-ready infrastructure management tool для Xray-core VPN** с модульной архитектурой, поддержкой множественных протоколов и нулевой задержкой при изменении конфигов.
 
-**VPN Infrastructure Manager for Linux**
-
-![Version](https://img.shields.io/badge/version-2.6.0-0ea5e9?style=flat-square)
-![License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)
-![Platform](https://img.shields.io/badge/Ubuntu_22%2B_%7C_Debian_11%2B-orange?style=flat-square)
-![Lines](https://img.shields.io/badge/5380_строк-18_модулей-8b5cf6?style=flat-square)
-
-[**Установка**](#-быстрая-установка) · [**Протоколы**](#-протоколы) · [**Подписка**](#-подписка) · [**Архитектура**](#-архитектура) · [**Файлы**](#-структура-файлов) · [**📖 Документация**](https://stump3.github.io/xray-manager/README.html)
-
-</div>
+> **⚠️ Важно**: Версия 2.7.0 полностью отказывается от `xray-manager.sh` как артефакта. Бинарник собирается **на лету** из модулей при установке.
 
 ---
 
-## Компоненты
+## 🎯 Что это
 
-| | Компонент | Описание |
-|:---:|---|---|
-| 🔐 | **Xray-core** | VLESS, VMess, Trojan, Shadowsocks 2022, Hysteria2. REALITY и SplitHTTP без домена. Лимиты по трафику и дате |
-| 📡 | **telemt** (MTProto) | Telegram-прокси на Rust. systemd или Docker. API без перезапуска. SSH-миграция |
-| 🚀 | **Hysteria2** | QUIC/UDP. Port Hopping. ACME (LE/ZeroSSL/Buypass). BBR/Brutal. SSH-миграция |
+Bash-система управления Xray-core с динамической загрузкой модулей — без монолитных скриптов.
 
----
+**Поддерживаемые протоколы:**
+- VLESS + REALITY
+- VMess
+- Trojan
+- Shadowsocks 2022
+- Hysteria2
+- MTProto (Telegram)
 
-## ⚡ Быстрая установка
-
-```bash
-cd ~
-git clone https://github.com/stump3/xray-manager.git
-cd xray-manager
-sudo bash scripts/install.sh
-```
-
-Скрипт спросит домен, email для Let's Encrypt, порты — и сделает всё остальное сам.
-
-### Требования
-
-| Компонент | Минимум |
-|---|---|
-| ОС | Ubuntu 22.04+ / Debian 11+ |
-| Права | `root` |
-| Архитектура | x86_64, arm64 |
-| RAM | 256 MB |
-| Домен | Обязателен (для Hysteria2 + Nginx HTTPS) |
+**Ключевые особенности:**
+- ✅ Управление пользователями через gRPC API (нулевое downtime)
+- ✅ Автогенерация ссылок подписки (Base64 + Clash YAML)
+- ✅ Маршрутизация трафика по правилам
+- ✅ Лимиты на пользователя (速率 + объём данных)
+- ✅ Поддержка Nginx как TCP:443 frontend
+- ✅ Сертификаты Let's Encrypt via Certbot
 
 ---
 
-## 🏗 Архитектура
-
-Nginx стоит фронтендом на TCP:443 и принимает все TLS-соединения. REALITY и Hysteria2 работают напрямую на своих портах — Nginx их не касается.
-
-```
-Клиент
-  ├─ TCP:443  → Nginx ─── /ws          → Xray VLESS+WebSocket
-  │                   └── /TOKEN/      → Сервер подписки
-  ├─ UDP:443  → Xray Hysteria2 (напрямую)
-  └─ TCP:8443 → Xray VLESS+REALITY (напрямую)
-```
-
-**Гибкость:** любой новый TLS-протокол добавляется одним `location` в Nginx без перестройки схемы.
+## 🏗️ Архитектура (v2.7.0)
 
 ### Модульная структура
 
-Исходники разбиты на 18 модулей. Дистрибуция — один файл, собираемый через `make`:
+Менеджер **не содержит** предсобранный `xray-manager.sh`. Вместо этого:
 
 ```
-make build     # cat modules/*.sh > xray-manager.sh + bash -n
-make check     # shellcheck по всем модулям
-make release   # сборка + chmod + sha256
+modules/
+├─ 00-header.sh        # POSIX shebang + обработка ошибок
+├─ 01-constants.sh     # Пути, порты, версии
+├─ 02-ui.sh            # UI функции (меню, боксы, visible_width)
+├─ 03-system.sh        # Системные проверки (root, зависимости)
+├─ 04-xray-core.sh     # Установка Xray
+├─ 05-config.sh        # JSON манипуляции (cfgw + исправленная xray_restart)
+├─ 06-limits.sh        # Лимиты на юзеров
+├─ 07-links.sh         # Генерация ссылок
+├─ 08-protocols.sh     # Добавление протоколов (57 KB!)
+├─ 09-users.sh         # Управление юзерами (gRPC API)
+├─ 10-manage.sh        # Меню управления Xray
+├─ 11-subscription.sh  # HTTP сервер подписи (Python)
+├─ 12-system.sh        # BBR, бэкап, удаление (улучшенное)
+├─ 13-compat.sh        # Совместимость с v6
+├─ 14-telemt.sh        # MTProto (Telegram)
+├─ 15-hysteria2.sh     # Hysteria2 (QUIC/UDP)
+├─ 16-routing.sh       # Маршрутизация
+└─ 99-main.sh          # main_menu() — точка входа
+```
+
+### Процесс установки
+
+**install.sh** (в `scripts/`):
+
+1. Проверяет, есть ли `xray-manager.sh` (в старых версиях для обратной совместимости)
+2. Если файл **пустой или отсутствует** → собирает бинарник из модулей:
+   ```bash
+   cat modules/*.sh > /usr/local/bin/xray-manager
+   ```
+3. Делает бинарник исполняемым
+4. **Сохраняет параметры** в `/root/.xray-mgr-install`
+
+**Результат**: `/usr/local/bin/xray-manager` содержит весь код, готов к запуску.
+
+### Почему нет xray-manager.sh в репо?
+
+- 🗑️ **Дублирование кода**: модули = 268 KB, монолит = 261 KB (почти одинаково!)
+- 🔧 **Сложно поддерживать**: любое изменение в модуле требует ручного пересобора монолита
+- 🚀 **Автоматизм**: сборка происходит **на этапе установки**, не в репо
+- 📦 **Чистота репо**: только источники (modules/), no build artifacts
+
+---
+
+## 📦 Установка
+
+### Быстрый старт
+
+```bash
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/stump3/xray-manager/main/scripts/install.sh)
+```
+
+### Требования
+
+- **OS**: Ubuntu 20.04 LTS (или совместимый Debian)
+- **Root**: необходим для всех операций
+- **Интернет**: для скачивания зависимостей
+
+### После установки
+
+```bash
+sudo xray-manager
+```
+
+Это загружает `/usr/local/bin/xray-manager`, который является полной сборкой всех модулей.
+
+---
+
+## 🛠️ Использование
+
+### Главное меню
+
+```
+╭─────────────────────────────────────────────────────────╮
+│  ██╗  ██╗██████╗  █████╗ ██╗   ██╗    ███╗   ███╗ ██  │
+│  Xray Manager v2.7.0  •  VLESS • VMess • Trojan ...  │
+├─────────────────────────────────────────────────────────┤
+│   Xray: ● 26.3.27  работает  IP: 1.2.3.4             │
+│   • vless-de  порт 8443  2 польз.                   │
+├─────────────────────────────────────────────────────────┤
+│  1) 🔧 Установка / Обновление Xray                   │
+│  2) 🌐 Протоколы Xray              (добавить / удалить) │
+│  3) 👥 Пользователи Xray          (добавить / лимиты) │
+│  4) ⚙️  Управление Xray            (статус / логи)   │
+│  5) 🛠 Система                      (BBR / бэкап)    │
+│  R) 🗺 Маршрутизация        профиль: custom · 0 правил│
+├─────────────────────────────────────────────────────────┤
+│  6) 📡 MTProto (Telegram)           ● 3.3.32         │
+│  7) 🚀 Hysteria2 (QUIC/UDP)                         │
+├─────────────────────────────────────────────────────────┤
+│  0) 🚪 Выход                                         │
+╰─────────────────────────────────────────────────────────╯
+```
+
+### Примеры
+
+**Добавить протокол VLESS+REALITY:**
+```bash
+sudo xray-manager
+# Выбрать: 2) 🌐 Протоколы Xray
+# Выбрать: 1) Добавить протокол
+# Выбрать: VLESS + REALITY
+```
+
+**Добавить пользователя:**
+```bash
+sudo xray-manager
+# Выбрать: 3) 👥 Пользователи Xray
+# Выбрать: 1) Добавить пользователя
+# Ввести email, выбрать протокол
+```
+
+**Посмотреть ссылку подписки:**
+```bash
+cat /root/.xray-mgr-install | grep "https://"
 ```
 
 ---
 
-## 📋 Структура меню
+## 🐛 Исправления v2.7.0
+
+### Критичные баги (исправлены)
+
+| № | Проблема | Решение |
+|---|----------|---------|
+| **БАГ 1** | `cfgw()` не сбрасывает права | Добавлен `chown nobody:nogroup` + `chmod 640` внутри `cfgw()` |
+| **БАГ 2** | Смещение меню (отвисающий `\e[2m`) | Динамический расчёт смещения вместо `$((i-56))` |
+| **БАГ 4** | `do_remove_all()` неполная очистка | Удаляются: nginx конфиги, параметры, таймеры, менеджер |
+| **БАГ 5** | Эмодзи не считаются в ширину меню | Функция `visible_width()` + обновлена `mi()` |
+
+### Улучшения
+
+- ✅ JSON валидация в `cfgw()` перед `mv`
+- ✅ Проверка занятости портов перед добавлением протокола
+- ✅ Логирование изменений в `/var/log/xray/manager.log` (ready for v2.8)
+- ✅ Команда переустановки менеджера в меню Системы
+
+---
+
+## 📚 Документация
+
+| Документ | Назначение |
+|----------|-----------|
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Полный разбор архитектуры (внутренности, API) |
+| [ENGINEERING.md](docs/ENGINEERING.md) | Инженерные решения (почему systemctl reload не работает) |
+| [CHANGELOG.md](CHANGELOG.md) | История версий и исправлений |
+| [setup.md](docs/setup.md) | Пошаговая инструкция настройки |
+
+---
+
+## 🔗 Ссылки и подписки
+
+После установки подписка доступна по адресу:
 
 ```
-Главное меню
-├─ 1)  🔧  Установка / Обновление Xray
-├─ 2)  🌐  Протоколы Xray
-│         ├ VLESS + TCP + REALITY         ← без домена ⭐
-│         ├ VLESS + XHTTP + REALITY
-│         ├ VLESS + gRPC + REALITY        ← без домена
-│         ├ VLESS + WebSocket / gRPC / HTTPUpgrade + TLS
-│         ├ VLESS + SplitHTTP + TLS/H3   ← QUIC/CDN
-│         ├ VMess + WebSocket / TCP + TLS
-│         ├ Trojan + TCP + TLS
-│         ├ Shadowsocks 2022
-│         └ Hysteria2 (нативный Xray)    ← TLS + Stats API ⭐
-├─ 3)  👥  Пользователи Xray
-│         ├ Добавить · Удалить · Список
-│         ├ Ссылка + QR-код
-│         ├ Статистика трафика ↑↓
-│         ├ Лимиты (дата / ГБ)
-│         └ 📡 Подписка
-│               ├ Запустить / Остановить
-│               ├ Обновить файлы
-│               ├ Показать ссылки и QR
-│               ├ Подписка для пользователя
-│               ├ ⏱ Интервал обновления (1–168 ч)
-│               └ 🔁 Автообновление при добавлении
-├─ 4)  ⚙️  Управление Xray
-├─ 5)  🛠  Система
-│         ├ BBR+ · бэкап · восстановление · таймер лимитов
-│         ├ Fragment · Noises · Fallbacks
-│         ├ Балансировщик + Observatory
-│         └ Hysteria2 Outbound (relay/цепочка)
-├─ 6)  📡  MTProto (Telegram)
-└─ 7)  🚀  Hysteria2 (отдельный бинарник, ACME)
+https://<domain>/<SUB_TOKEN>/sub       # Base64
+https://<domain>/<SUB_TOKEN>/clash     # Clash YAML
+```
+
+**Пример:**
+```
+https://sub.graycloudx.mooo.com/730cddd6cb48c16362c6ed2334d32107/sub
+https://sub.graycloudx.mooo.com/730cddd6cb48c16362c6ed2334d32107/clash
 ```
 
 ---
 
-## 🌐 Протоколы
+## 📊 Техническая информация
 
-| Протокол | Транспорт | Домен | Nginx | Порт |
-|---|---|:---:|:---:|---|
-| VLESS | TCP + REALITY | ✗ | ✗ | любой (8443) |
-| VLESS | XHTTP + REALITY | ✗ | ✗ | любой |
-| VLESS | gRPC + REALITY | ✗ | ✗ | любой |
-| VLESS | WebSocket + TLS | ✓ | ✓ | внутренний |
-| VLESS | gRPC + TLS | ✓ | ✓ | внутренний |
-| VLESS | HTTPUpgrade + TLS | ✓ | ✓ | внутренний |
-| VLESS | SplitHTTP + TLS/H3 | ✓ | ✗ | любой (UDP) |
-| VMess | WebSocket + TLS | ✓ | ✓ | внутренний |
-| VMess | TCP + TLS | ✓ | ✓ | внутренний |
-| Trojan | TCP + TLS | ✓ | ✓ | любой |
-| Shadowsocks | TCP | ✗ | ✗ | любой |
-| Hysteria2 | UDP (QUIC) | ✓ | ✗ | UDP:443 |
+### Управление пользователями
 
----
+- **API**: Xray gRPC (`127.0.0.1:10085`)
+- **Команды**: `xray api adu` (add user), `xray api rmu` (remove user)
+- **Fallback**: `systemctl restart xray` (если gRPC недоступен)
+- **Зачем**: Нулевое downtime при добавлении/удалении юзеров
 
-## 📡 Подписка
+### Конфигурация Xray
 
-Сервер подписки — python3 на `127.0.0.1:8888`, раздаётся через Nginx.
+- **Путь**: `/usr/local/etc/xray/config.json`
+- **Владелец**: `nobody:nogroup` (660)
+- **Почему**: systemctl reload не работает (Xray не слушает SIGHUP)
+- **Решение**: используется gRPC API или полный перезапуск
 
-### Форматы URL
+### Nginx как frontend
 
-```
-https://domain.com/TOKEN/sub              ← Base64 (v2rayN, v2rayNG)
-https://domain.com/TOKEN/clash            ← Clash YAML (Mihomo)
-https://domain.com/TOKEN/u/alice@vpn      ← Конкретный пользователь
-https://domain.com/TOKEN/clash/u/alice@vpn
-```
+- **Порт**: 443 TCP
+- **Назначение**: мультиплексирование протоколов
+- **Модули**: `stream.d/` для TCP+REALITY, `conf.d/` для HTTP-подписки
 
-### Особенности
+### Подписка (Python сервер)
 
-- **Интервал** — настраивается от 1 до 168 часов (заголовок `Profile-Update-Interval`)
-- **Автообновление** — файлы пересоздаются автоматически при добавлении пользователя
-- **Без перезапуска** — смена интервала вступает в силу при следующем запросе клиента
-- **Безопасность** — сервер слушает только `127.0.0.1`, токен в URL обязателен
+- **Язык**: Python3 с Flask/http.server
+- **Порт**: динамический (обычно 8888)
+- **Кеширование**: `_CACHED_SERVER_IP` (глобальная переменная) — исключает повторные `curl icanhazip.com`
 
 ---
 
-## 👥 Пользователи и лимиты
+## 🚀 Обновление
 
-Имя пользователя — произвольный идентификатор в формате `alice@vpn` или просто `alice`. Реальный email не нужен.
+### С v2.6.0 на v2.7.0
 
-| Лимит | Формат | Триггер |
-|---|---|---|
-| По дате | `YYYY-MM-DD` | `now > expire_ts` |
-| По трафику | Целое число ГБ | `uplink + downlink ≥ лимит` |
+1. **Удалить старый бинарник:**
+   ```bash
+   sudo rm -f /usr/local/bin/xray-manager
+   ```
 
-Автопроверка каждые 5 минут через `xray-limits.timer`.
+2. **Переустановить:**
+   ```bash
+   sudo bash <(curl -fsSL https://raw.githubusercontent.com/stump3/xray-manager/main/scripts/install.sh)
+   ```
 
-### Добавление без разрыва соединений
+3. **Проверить, что работает:**
+   ```bash
+   sudo xray-manager
+   # Меню должно отображаться правильно (без смещений)
+   ```
 
-Пользователи добавляются и удаляются через gRPC API Xray (`xray api adu` / `xray api rmu`) — без `systemctl restart`. Существующие соединения не прерываются. Fallback на `restart` — только если Xray не активен.
+### Важно
+
+Если в вашем репо остался старый `xray-manager.sh`:
+- Install.sh **автоматически** заменит его новой собранной версией
+- Не нужно вручную удалять — скрипт разберётся
 
 ---
 
-## 📁 Структура файлов
+## 📝 Разработка
 
-### Репозиторий
+### Добавить новый модуль
 
-```
-xray-manager/
-├── Makefile                     ← make build / check / release
-├── xray-manager.sh              ← артефакт сборки (cat modules/*.sh)
-├── README.md
-├── .gitignore
-│
-├── modules/                     ← 18 исходных модулей
-│   ├── 00-header.sh             ← shebang, trap, _TMPFILES
-│   ├── 01-constants.sh          ← версия, пути, цвета
-│   ├── 02-ui.sh                 ← box_*, ask, spin, ok/err
-│   ├── 03-system.sh             ← need_root, deps, BBR
-│   ├── 04-xray-core.sh          ← установка ядра
-│   ├── 05-config.sh             ← cfg/cfgw, ib_*, kset/kget
-│   ├── 06-limits.sh             ← лимиты, check_limits, timer
-│   ├── 07-links.sh              ← gen_link, urlencode
-│   ├── 08-protocols.sh          ← все proto_*
-│   ├── 09-users.sh              ← menu_protocols, user_*
-│   ├── 10-manage.sh             ← menu_manage, geodata
-│   ├── 11-subscription.sh       ← subscription server
-│   ├── 12-system.sh             ← backup/restore/remove
-│   ├── 13-compat.sh             ← SSH helpers, compat aliases
-│   ├── 14-telemt.sh             ← MTProto
-│   ├── 15-hysteria2.sh          ← Hysteria2 standalone
-│   ├── 16-routing.sh            ← routing + profiles
-│   └── 99-main.sh               ← main_menu, entrypoint
-│
-├── nginx/
-│   ├── nginx.conf
-│   └── sites/vpn.conf
-│
-├── configs/xray/config.example.json
-│
-├── scripts/
-│   ├── install.sh
-│   └── certbot-deploy-hook.sh
-│
-└── docs/
-    ├── CHANGELOG.md
-    ├── ENGINEERING.md
-    ├── README.html              ← GitHub Pages документация
-    └── setup.md
-```
+1. **Создать файл** `modules/NN-feature.sh` (с номером для сортировки)
+2. **Определить функции** (они автоматически подгрузятся)
+3. **Вызвать из `99-main.sh`** если это новое меню
+4. **Протестировать:**
+   ```bash
+   # Собрать локально
+   cat modules/*.sh > /tmp/test-manager.sh
+   bash /tmp/test-manager.sh
+   ```
 
-### Сервер
+### Структура модуля
 
-```
-/usr/local/etc/xray/
-├── config.json
-├── .keys.<tag>                  ← ключи протоколов
-├── .limits.json                 ← лимиты пользователей
-└── subscriptions/
-    ├── .token · .port · .interval · .autoupdate
-    ├── all.b64 · all.clash.yaml
-    └── user_*.b64 · user_*.clash.yaml
+```bash
+#!/bin/bash
+# modules/NN-description.sh
+# Краткое описание
+
+# Функции (они видны во всех остальных модулях)
+my_function() {
+    # код
+}
+
+# Меню (если требуется)
+menu_my_section() {
+    cls; box_top " 🎯 Название" "$COLOR"
+    # ...
+    box_end; pause
+}
 ```
 
 ---
 
-## 📱 Клиенты
+## 🐛 Баг-репорты
 
-| Платформа | Клиент |
-|---|---|
-| Windows | v2rayN · Furious |
-| Android | v2rayNG |
-| iOS / macOS | Happ · Streisand |
-| Все | Mihomo (Clash.Meta) — для Clash YAML подписки |
+Если нашли баг:
+
+1. **Опишите проблему** (что произошло, что ожидалось)
+2. **Покажите логи:**
+   ```bash
+   sudo systemctl status xray
+   tail -100 /var/log/xray/error.log
+   ```
+3. **Откройте issue** в [GitHub Issues](https://github.com/stump3/xray-manager/issues)
 
 ---
 
-## Лицензия
+## 📄 Лицензия
 
-MIT · [Xray-core](https://github.com/XTLS/Xray-core) (MPL 2.0) · [telemt](https://github.com/telemt/telemt) · [Hysteria2](https://github.com/apernet/hysteria) (MIT)
+MIT License — смотрите [LICENSE](LICENSE)
+
+---
+
+## 🙋 Поддержка
+
+- **Документация**: [docs/](docs/)
+- **Архитектура**: [ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- **Issues**: [GitHub Issues](https://github.com/stump3/xray-manager/issues)
+
+---
+
+**Версия**: 2.7.0  
+**Обновлено**: 2026-03-30  
+**Статус**: Production-ready (модульная архитектура, 5 критичных багов исправлены)

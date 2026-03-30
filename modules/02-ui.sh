@@ -6,23 +6,20 @@ tw() { tput cols 2>/dev/null || echo 80; }
 
 cls() { printf "\e[2J\e[H"; }
 
-strip_ansi() {
-    printf "%b" "$1" | sed 's/\x1b\[[0-9;]*m//g'
-}
-
-vwidth() {
-    local s; s=$(strip_ansi "$1")
-    # Bash считает большинство emoji как 1 символ, но в терминале они часто занимают 2 колонки.
-    # Для стабильной верстки учитываем используемые в меню emoji вручную.
-    s=${s//⚙️/XX}
-    s=${s//♻️/XX}
-    s=${s//🛠/XX}
-    s=${s//🗺/XX}
-    s=${s//📡/XX}
-    s=${s//🚀/XX}
-    s=${s//🛡️/XX}
-    s=${s//⚖️/XX}
-    echo "${#s}"
+# 🔧 БАГ 5 FIX: подсчитать видимую ширину текста с учётом эмодзи (занимают 2 колонки)
+# Usage: local width=$(visible_width "my 🚀 text"); echo $width
+visible_width() {
+    local text="$1"
+    # Убрать ANSI escape-коды
+    local clean; clean=$(printf "%b" "$text" | sed 's/\x1b\[[0-9;]*m//g')
+    # Базовая длина строки
+    local len=${#clean}
+    # Подсчитать эмодзи (грубая эвристика: символы > U+0080)
+    local emoji_count=0
+    # Ищем типичные эмодзи из меню
+    emoji_count=$(printf "%s" "$clean" | grep -o '[🔧🌐👥⚙️🛠📡🚀🗺]' | wc -l)
+    # Каждый эмодзи добавляет 1 к видимой ширине (так как он считается как 1, но занимает 2)
+    echo $((len + emoji_count))
 }
 
 box_top() {
@@ -48,8 +45,8 @@ box_mid() {
 box_row() {
     local text="$1"
     local w; w=$(tw); local i=$((w-2))
-    local rl; rl=$(vwidth "$text")
-    local pad=$((i - rl - 2))
+    local raw; raw=$(printf "%b" "$text" | sed 's/\x1b\[[0-9;]*m//g')
+    local rl=${#raw}; local pad=$((i - rl - 2))
     [[ $pad -lt 0 ]] && pad=0
     printf "${DIM}│${R} %b%*s${DIM}│${R}\n" "$text" "$pad" ""
 }
@@ -63,11 +60,20 @@ mi() {
     # menu_item num icon label [badge]
     local n="$1" ic="$2" lb="$3" badge="${4:-}"
     local w; w=$(tw); local i=$((w-2))
-    local used=$(( $(vwidth "$n") + $(vwidth "$ic") + $(vwidth "$lb") + 5 ))
-    local pad=$(( i - used - $(vwidth "$badge") ))
+    
+    # 🔧 БАГ 5 FIX: считать видимую ширину включая эмодзи
+    local raw_lb; raw_lb=$(printf "%b" "$lb" | sed 's/\x1b\[[0-9;]*m//g')
+    local vis_lb=$(visible_width "$raw_lb")
+    local vis_ic=$(visible_width "$ic")
+    
+    # Стрипаем ANSI из badge для корректного расчёта ширины
+    local raw_badge; raw_badge=$(printf "%b" "$badge" | sed 's/\x1b\[[0-9;]*m//g')
+    
+    # ${#n} = 1, эмодзи иконка = vis_ic (с учётом что занимает 2 колонки), 8 = "│  N)  "
+    local used=$(( ${#n} + vis_ic + vis_lb + 8 ))
+    local pad=$(( i - used - ${#raw_badge} - 1 ))
     [[ $pad -lt 0 ]] && pad=0
     if [[ -n "$badge" ]]; then
-        # %b интерпретирует \e escape-коды в badge (статусы MTProto/Hysteria2)
         printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s %b%*s${DIM}%b │${R}\n" \
             "$n" "$ic" "$lb" "$pad" "" "$badge"
     else
@@ -125,3 +131,4 @@ hr() {
     local w; w=$(tw)
     printf "${DIM}%s${R}\n" "$(printf '%*s' "$w" | tr ' ' '─')"
 }
+

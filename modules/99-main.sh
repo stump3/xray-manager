@@ -57,23 +57,25 @@ main_menu() {
         mi "3" "👥" "Пользователи Xray"            "(добавить / лимиты / QR)"
         mi "4" "⚙️ " "Управление Xray"             "(статус / логи / гео)"
         mi "5" "🛠" "Система"                      "(BBR / бэкап / удалить)"
-        # Строка роутинга с активным профилем
+        # Статус роутинга с активным профилем
         local _rp; _rp=$(routing_active_profile 2>/dev/null || echo "custom")
         local _rn; _rn=$(routing_rules_count 2>/dev/null || echo 0)
-        local _r_text="${CYAN}Маршрутизация${R}  ${DIM}профиль: ${_rp} · ${_rn} правил${R}"
-        local _r_pad=$(( i - 4 - $(vwidth "R") - 2 - $(vwidth "🗺") - 1 - $(vwidth "$_r_text") ))
-        [[ $_r_pad -lt 0 ]] && _r_pad=0
-        printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${CYAN}Маршрутизация${R}  ${DIM}профиль: %s · %s правил${R}%-*s${DIM}│${R}\n" \
-            "R" "🗺" "$_rp" "$_rn" "$_r_pad" ""
+        
+        # 🔧 БАГ 2 FIX: динамически считать смещение вместо зафиксированного $((i-56))
+        local _routing_txt="профиль: $_rp · $_rn правил"
+        local _routing_vis=$(visible_width "$_routing_txt")
+        local _routing_pad=$(( i - ${#n} - 4 - 2 - ${#ic} - 2 - 12 - _routing_vis - 1 ))  # '│  R)  🗺  Маршрутизация  [text]  │'
+        [[ $_routing_pad -lt 0 ]] && _routing_pad=0
+        
+        printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${CYAN}Маршрутизация${R}  ${DIM}%s${R}%*s${DIM}│${R}\n" \
+            "R" "🗺" "$_routing_txt" "$_routing_pad" ""
         printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
-        local _mt_pad=$(( i - 4 - $(vwidth "6") - 2 - $(vwidth "📡") - 1 - $(vwidth "MTProto (Telegram)") - $(vwidth "$mt_st") ))
-        local _hy_pad=$(( i - 4 - $(vwidth "7") - 2 - $(vwidth "🚀") - 1 - $(vwidth "Hysteria2 (QUIC/UDP)") - $(vwidth "$hy_st") ))
-        [[ $_mt_pad -lt 0 ]] && _mt_pad=0
-        [[ $_hy_pad -lt 0 ]] && _hy_pad=0
+        local _raw_mt; _raw_mt=$(printf "%b" "$mt_st" | sed 's/\x1b\[[0-9;]*m//g')
+        local _raw_hy; _raw_hy=$(printf "%b" "$hy_st" | sed 's/\x1b\[[0-9;]*m//g')
         printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${MAGENTA}MTProto (Telegram)${R}%-*s${DIM}%b │${R}\n" \
-            "6" "📡" "$_mt_pad" "" "$mt_st"
+            "6" "📡" $((i-40-${#_raw_mt})) "" "$mt_st"
         printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${ORANGE}Hysteria2 (QUIC/UDP)${R}%-*s${DIM}%b │${R}\n" \
-            "7" "🚀" "$_hy_pad" "" "$hy_st"
+            "7" "🚀" $((i-42-${#_raw_hy})) "" "$hy_st"
         printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
         mi "0" "🚪" "Выход"
         printf "${DIM}╰%s╯${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
