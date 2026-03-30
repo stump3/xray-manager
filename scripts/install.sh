@@ -185,6 +185,9 @@ ok "UFW настроен"
 # ══════════════════════════════════════════════════════════════
 step 3 "Настройка Nginx"
 
+# Убрать артефакты предыдущих установок (stream-443 в conf.d ломает nginx -t)
+rm -f /etc/nginx/conf.d/stream-443.conf 2>/dev/null || true
+
 mkdir -p /var/www/html /var/www/certbot
 cat > /var/www/html/index.html << 'HTML'
 <!DOCTYPE html><html><head><meta charset="UTF-8"><title>OK</title>
