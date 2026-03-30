@@ -12,14 +12,16 @@ visible_width() {
     local text="$1"
     # Убрать ANSI escape-коды
     local clean; clean=$(printf "%b" "$text" | sed 's/\x1b\[[0-9;]*m//g')
-    # Базовая длина строки
-    local len=${#clean}
-    # Подсчитать эмодзи (грубая эвристика: символы > U+0080)
-    local emoji_count=0
-    # Ищем типичные эмодзи из меню
-    emoji_count=$(printf "%s" "$clean" | grep -o '[🔧🌐👥⚙️🛠📡🚀🗺]' | wc -l)
-    # Каждый эмодзи добавляет 1 к видимой ширине (так как он считается как 1, но занимает 2)
-    echo $((len + emoji_count))
+    # Используем python3 для точного подсчёта визуальных колонок.
+    # east_asian_width W/F = wide (2 колонки): все эмодзи, CJK и т.д.
+    # Это правильно обрабатывает любые символы, не только жёстко перечисленные.
+    python3 -c "
+import unicodedata, sys
+s = sys.argv[1]
+print(sum(2 if unicodedata.east_asian_width(c) in ('W','F') else 1 for c in s))
+" "$clean" 2>/dev/null && return
+    # Fallback если python3 недоступен: bash ${#} (без учёта wide chars)
+    echo "${#clean}"
 }
 
 box_top() {

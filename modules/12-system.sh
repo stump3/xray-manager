@@ -123,7 +123,7 @@ do_remove_all() {
     # Nginx конфиги (все xray-related файлы)
     rm -f /etc/nginx/conf.d/xray*.conf /etc/nginx/conf.d/*-vless*.conf /etc/nginx/conf.d/*-reality*.conf \
           /etc/nginx/conf.d/*-vmess*.conf /etc/nginx/conf.d/*-trojan*.conf /etc/nginx/conf.d/*-hysteria*.conf \
-          /etc/nginx/conf.d/stream.d/*.conf 2>/dev/null || true
+          /etc/nginx/stream.d/stream-443.conf 2>/dev/null || true
     
     # Параметры установки
     rm -f /root/.xray-mgr-install
