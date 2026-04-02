@@ -3,20 +3,30 @@
 
 menu_manage() {
     while true; do
-        cls; box_top " ⚙️  Управление сервисом" "$BLUE"; box_blank
+        cls; box_top " ⚙️  Xray" "$BLUE"; box_blank
         local st_icon st_text
         if xray_active; then st_icon="${GREEN}●${R}"; st_text="${GREEN}Работает${R}"
         else st_icon="${RED}○${R}"; st_text="${RED}Остановлен${R}"; fi
         box_row "  Ядро:   ${CYAN}$(xray_ver)${R}   Статус: ${st_icon} ${st_text}"
         box_row "  IP:     ${YELLOW}$(server_ip)${R}"
+        local _rp; _rp=$(routing_active_profile 2>/dev/null || echo "custom")
+        local _rn; _rn=$(routing_rules_count 2>/dev/null || echo 0)
+        box_row "  Маршрутизация: ${DIM}профиль: ${_rp} · ${_rn} правил${R}"
         box_blank; box_mid
         mi "1" "📊" "Статус + логи"
         mi "2" "🔄" "Перезапустить"
         mi "3" "⏹" "$(xray_active && echo "Остановить" || echo "Запустить")"
-        mi "4" "📈" "Статистика inbound/outbound"
+        mi "4" "📈" "Статистика traffic"
         mi "5" "🌍" "Обновить геоданные"
-        mi "6" "⬆️ " "Обновить ядро Xray"
-        mi "7" "📈" "Metrics endpoint      (HTTP JSON статистика)"
+        mi "6" "🔧" "Установка / Обновление ядра"
+        mi "7" "📈" "Metrics endpoint"
+        mi "R" "🗺" "${CYAN}Маршрутизация${R}" "${DIM}профиль: ${_rp} · ${_rn} правил${R}"
+        box_row "  ${MAGENTA}${BOLD}Расширенные${R}"
+        mi "8" "🧩" "${CYAN}Fragment — фрагментация TLS${R}"
+        mi "9" "🔊" "${CYAN}Noises — UDP шум${R}"
+        mi "10" "🛡️ " "${YELLOW}Fallbacks — защита от зондирования${R}"
+        mi "11" "⚖️ " "${MAGENTA}Балансировщик + Observatory${R}"
+        mi "12" "🚀" "${GREEN}Hysteria2 Outbound — relay/цепочка${R}"
         box_mid; mi "0" "◀" "Назад"; box_end
         read -rp "$(printf "${YELLOW}›${R} ") " ch
         case "$ch" in
@@ -28,6 +38,12 @@ menu_manage() {
             5) update_geodata ;;
             6) install_xray_core ;;
             7) menu_metrics ;;
+            R|r) menu_routing ;;
+            8) menu_freedom_fragment ;;
+            9) menu_freedom_noises ;;
+            10) menu_fallbacks ;;
+            11) menu_balancer ;;
+            12) menu_hysteria_outbound ;;
             0) return ;;
         esac
     done
