@@ -23,6 +23,14 @@ proto_vless_tcp_reality() {
     ask "SNI (камуфляжный домен)" sni "www.microsoft.com"
     ask "Тег (уникальный ID)" tag "vless-reality"
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
+
+    # Проверить порт до генерации ключей
+    port_check "$port" || { pause; return; }
+
+    # listen-адрес: stream-режим → localhost, иначе все интерфейсы
+    local _listen_addr
+    [[ -n "$_stream_port" ]] && _listen_addr="127.0.0.1" || _listen_addr="0.0.0.0"
+
     spin_start "Генерация ключей x25519"
     local kout; kout=$("$XRAY_BIN" x25519 2>/dev/null)
     local priv; priv=$(echo "$kout" | grep -i 'private' | awk '{print $NF}')
@@ -67,6 +75,7 @@ proto_vless_xhttp_reality() {
     ask "Режим (auto/packet-up/stream-up/stream-one)" mode_v "auto"
     ask "Тег" tag "vless-xhttp"
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
+    port_check "$port" || { pause; return; }
     spin_start "Генерация ключей"
     local kout; kout=$("$XRAY_BIN" x25519 2>/dev/null)
     local priv; priv=$(echo "$kout" | grep -i 'private' | awk '{print $NF}')
@@ -118,6 +127,7 @@ proto_vless_ws_tls() {
     ask "Тег" tag "vless-ws"
     [[ -z "$dom" ]] && { err "Домен обязателен"; pause; return; }
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
+    port_check "$port" || { pause; return; }
     local uuid; uuid=$("$XRAY_BIN" uuid 2>/dev/null)
     kset "$tag" domain "$dom"; kset "$tag" port "$port"
     kset "$tag" path "$path_v"; kset "$tag" type "vless-ws"
@@ -132,6 +142,7 @@ proto_vless_ws_tls() {
                 "certificates":[{"certificateFile":$cert,"keyFile":$key}]},
             "wsSettings":{"path":$path}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
+    cert_check "$cert_p" "$key_p" || { pause; return; }
     ib_add "$ib"; xray_restart
     cls; box_top " ✅  VLESS + WS + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  Домен: ${WHITE}${dom}${R}"
@@ -159,6 +170,7 @@ proto_vless_grpc_tls() {
     ask "Тег" tag "vless-grpc"
     [[ -z "$dom" ]] && { err "Домен обязателен"; pause; return; }
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
+    port_check "$port" || { pause; return; }
     local uuid; uuid=$("$XRAY_BIN" uuid 2>/dev/null)
     kset "$tag" domain "$dom"; kset "$tag" port "$port"
     kset "$tag" serviceName "$svc"; kset "$tag" type "vless-grpc"
@@ -173,6 +185,7 @@ proto_vless_grpc_tls() {
                 "certificates":[{"certificateFile":$cert,"keyFile":$key}]},
             "grpcSettings":{"serviceName":$svc,"multiMode":false}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
+    cert_check "$cert_p" "$key_p" || { pause; return; }
     ib_add "$ib"; xray_restart
     cls; box_top " ✅  VLESS + gRPC + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}"
@@ -204,6 +217,7 @@ proto_vless_httpupgrade_tls() {
     ask "Тег" tag "vless-httpupgrade"
     [[ -z "$dom" ]] && { err "Домен обязателен"; pause; return; }
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
+    port_check "$port" || { pause; return; }
     local uuid; uuid=$("$XRAY_BIN" uuid 2>/dev/null)
     kset "$tag" domain "$dom"; kset "$tag" port "$port"
     kset "$tag" path "$path_v"; kset "$tag" type "vless-httpupgrade"
@@ -218,6 +232,7 @@ proto_vless_httpupgrade_tls() {
                 "certificates":[{"certificateFile":$cert,"keyFile":$key}]},
             "httpupgradeSettings":{"path":$path,"host":$sni}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
+    cert_check "$cert_p" "$key_p" || { pause; return; }
     ib_add "$ib"; xray_restart
     cls; box_top " ✅  VLESS + HTTPUpgrade + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  Path: ${WHITE}${path_v}${R}"
@@ -244,6 +259,7 @@ proto_vmess_ws_tls() {
     ask "Тег" tag "vmess-ws"
     [[ -z "$dom" ]] && { err "Домен обязателен"; pause; return; }
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
+    port_check "$port" || { pause; return; }
     local uuid; uuid=$("$XRAY_BIN" uuid 2>/dev/null)
     kset "$tag" domain "$dom"; kset "$tag" port "$port"
     kset "$tag" path "$path_v"; kset "$tag" type "vmess-ws"
@@ -258,6 +274,7 @@ proto_vmess_ws_tls() {
                 "certificates":[{"certificateFile":$cert,"keyFile":$key}]},
             "wsSettings":{"path":$path,"headers":{"Host":$sni}}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
+    cert_check "$cert_p" "$key_p" || { pause; return; }
     ib_add "$ib"; xray_restart
     cls; box_top " ✅  VMess + WS + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  Домен: ${WHITE}${dom}${R}"
@@ -283,6 +300,7 @@ proto_vmess_tcp_tls() {
     ask "Тег" tag "vmess-tcp"
     [[ -z "$dom" ]] && { err "Домен обязателен"; pause; return; }
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
+    port_check "$port" || { pause; return; }
     local uuid; uuid=$("$XRAY_BIN" uuid 2>/dev/null)
     kset "$tag" domain "$dom"; kset "$tag" port "$port"
     kset "$tag" type "vmess-tcp"
@@ -295,6 +313,7 @@ proto_vmess_tcp_tls() {
             "tlsSettings":{"serverName":$sni,"alpn":["h2","http/1.1"],
                 "certificates":[{"certificateFile":$cert,"keyFile":$key}]}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
+    cert_check "$cert_p" "$key_p" || { pause; return; }
     ib_add "$ib"; xray_restart
     cls; box_top " ✅  VMess + TCP + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  Домен: ${WHITE}${dom}${R}"
@@ -320,6 +339,7 @@ proto_trojan_tls() {
     ask "Тег" tag "trojan"
     [[ -z "$dom" ]] && { err "Домен обязателен"; pause; return; }
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
+    port_check "$port" || { pause; return; }
     local pass; pass=$(openssl rand -hex 16)
     kset "$tag" domain "$dom"; kset "$tag" port "$port"
     kset "$tag" type "trojan"
@@ -332,6 +352,7 @@ proto_trojan_tls() {
             "tlsSettings":{"serverName":$sni,"alpn":["h2","http/1.1"],
                 "certificates":[{"certificateFile":$cert,"keyFile":$key}]}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
+    cert_check "$cert_p" "$key_p" || { pause; return; }
     ib_add "$ib"; xray_restart
     cls; box_top " ✅  Trojan + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  Домен: ${WHITE}${dom}${R}"
@@ -354,6 +375,7 @@ proto_shadowsocks() {
     ask "Метод" method "2022-blake3-aes-256-gcm"
     ask "Тег" tag "shadowsocks"
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
+    port_check "$port" || { pause; return; }
     # Генерация сервер-пароля (base64, 32 bytes для 256-gcm)
     local sp; sp=$(openssl rand -base64 32)
     local up; up=$(openssl rand -base64 32)
@@ -1008,6 +1030,7 @@ proto_vless_grpc_reality() {
     ask "gRPC ServiceName" svc "grpc"
     ask "Тег" tag "vless-grpc-reality"
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
+    port_check "$port" || { pause; return; }
     spin_start "Генерация ключей x25519"
     local kout; kout=$("$XRAY_BIN" x25519 2>/dev/null)
     local priv; priv=$(echo "$kout" | grep -i 'private' | awk '{print $NF}')
@@ -1057,6 +1080,7 @@ proto_vless_splithttp_tls() {
     ask "Тег" tag "vless-splithttp"
     [[ -z "$dom" ]] && { err "Домен обязателен"; pause; return; }
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
+    port_check "$port" || { pause; return; }
     local cert_p key_p
     ask "Cert (fullchain.pem)" cert_p "/etc/letsencrypt/live/${dom}/fullchain.pem"
     ask "Key  (privkey.pem)"   key_p  "/etc/letsencrypt/live/${dom}/privkey.pem"
@@ -1086,6 +1110,7 @@ proto_vless_splithttp_tls() {
                 "alpn":$alpn,
                 "certificates":[{"certificateFile":$cert,"keyFile":$key}]}},
         "sniffing":{"enabled":true,"destOverride":["http","tls","quic"]}}')
+    cert_check "$cert_p" "$key_p" || { pause; return; }
     ib_add "$ib"; xray_restart
     cls; box_top " ✅  VLESS + SplitHTTP + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}"

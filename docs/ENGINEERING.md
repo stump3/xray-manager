@@ -1,6 +1,6 @@
 # Engineering Document
 
-> Xray Manager v2.6.0 — архитектура, дизайн-решения, протоколы данных.
+> Xray Manager v2.7.4 — архитектура, дизайн-решения, протоколы данных.
 
 ---
 
@@ -578,6 +578,58 @@ systemctl reset-failed xray.service 2>/dev/null || true
 rm -f /etc/systemd/system/xray.service
 rm -f /etc/systemd/system/xray@.service
 systemctl daemon-reload
+```
+
+---
+
+---
+
+## Версионирование
+
+### Где менять версию при бампе
+
+При выпуске новой версии нужно обновить **все** следующие файлы и строки:
+
+| Файл | Строка | Что менять | Пример |
+|---|---|---|---|
+| `modules/01-constants.sh` | ~8 | `MANAGER_VERSION="X.Y.Z"` | `MANAGER_VERSION="2.7.4"` |
+| `modules/00-header.sh` | ~4 | `#  Xray Manager vX.Y.Z` | `#  Xray Manager v2.7.4` |
+| `scripts/install.sh` | ~89 | `Установка стека vX.Y.Z` | `Установка стека v2.7.4` |
+| `CHANGELOG.md` | верх файла | добавить блок `## [X.Y.Z] — ДАТА` | см. формат ниже |
+| `docs/ENGINEERING.md` | ~3 | `> Xray Manager vX.Y.Z` | `> Xray Manager v2.7.4` |
+
+> ⚠️ `xray-manager.sh` в корне **не редактировать вручную** — это артефакт сборки.  
+> Он пересобирается из модулей командой `make build` или `cat modules/*.sh > xray-manager.sh`.
+
+### Автоматическая проверка консистентности
+
+```bash
+# Извлечь версии из всех файлов и сравнить
+grep -h 'MANAGER_VERSION=\|Xray Manager v\|стека v' \
+    modules/01-constants.sh modules/00-header.sh scripts/install.sh \
+    | grep -oP '[\d]+\.[\d]+\.[\d]+'
+```
+
+Все четыре строки должны давать одинаковое значение.
+
+### Формат записи CHANGELOG.md
+
+```markdown
+## [X.Y.Z] — YYYY-MM-DD
+
+### 🔴 Исправлено (критичные)
+
+**`файл` — краткое название**  
+Причина и симптом. Исправлено: что сделано.
+
+### 🟡 Исправлено
+
+**`файл` — краткое название**  
+Описание.
+
+### ✨ Новое
+
+**Название фичи** — описание.
 ```
 
 ---

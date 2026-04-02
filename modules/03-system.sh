@@ -9,6 +9,32 @@ need_root() {
 xray_ok()      { [[ -f "$XRAY_BIN" ]]; }
 xray_active()  { systemctl is-active --quiet xray 2>/dev/null; }
 xray_ver()     { xray_ok && "$XRAY_BIN" -version 2>/dev/null | awk 'NR==1{print $2}' || echo "—"; }
+
+# Проверить что порт свободен (не занят другим процессом, кроме самого xray)
+# Возвращает 0 если порт свободен, 1 если занят.
+# При занятом порте выводит предупреждение с именем процесса-владельца.
+port_check() {
+    local port="$1"
+    local owner; owner=$(ss -tlnp "sport = :${port}" 2>/dev/null \
+        | awk 'NR>1 && /LISTEN/{match($0,/users:\(\("([^"]+)/,a); print a[1]}' \
+        | head -1)
+    [[ -z "$owner" ]] && return 0
+    # Если владелец — сам xray, порт технически занят нами же (перезапуск освободит)
+    [[ "$owner" == "xray" ]] && return 0
+    warn "Порт ${port} занят процессом: ${owner}"
+    warn "Xray не сможет запуститься. Выбери другой порт или останови ${owner}."
+    return 1
+}
+
+# Проверить что TLS-сертификат и ключ существуют и читаемы
+# cert_check <cert_path> <key_path>
+cert_check() {
+    local cert="$1" key="$2"
+    local ok=1
+    [[ -f "$cert" ]] || { err "Файл сертификата не найден: ${cert}"; ok=0; }
+    [[ -f "$key"  ]] || { err "Файл ключа не найден: ${key}";         ok=0; }
+    [[ $ok -eq 1 ]]
+}
 server_ip()    { timeout 3 curl -4 -s https://icanhazip.com 2>/dev/null || timeout 3 curl -4 -s https://api.ipify.org 2>/dev/null || echo "0.0.0.0"; }
 
 # ──────────────────────────────────────────────────────────────────────────────

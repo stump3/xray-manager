@@ -5,6 +5,43 @@
 
 ---
 
+## [2.7.4] — 2026-03-30
+
+### 🔴 Исправлено (критичные)
+
+**`modules/02-ui.sh` — `mi()` формула `pad` давала строки на 1 символ короче ширины терминала**  
+Константа `8` в формуле `pad = i - used - 1` (где `i = w-2`) соответствует подсчёту fixed-символов в no-badge строке как `8`, но реальный подсчёт даёт `7`. В результате `pad` был на 1 меньше нужного → правая рамка `│` не замыкала бокс. Дополнительно: badge-строка имеет ` │` в конце (1 лишний пробел) — для неё нужна другая константа. Исправлено: два отдельных `pad` для `badge`/`no-badge` ветки, вычисленных из первых принципов: `pad = w - base - 1` (no-badge) и `pad = w - base - 2 - ${#raw_badge}` (badge), где `base = 7 + ${#n} + vis_ic + vis_lb`.
+
+**`modules/02-ui.sh` — `visible_width()` не считала 2-wide для `🛠 🗺 🗑 ⚙️ ⚖️` и подобных**  
+Символы из блоков `Misc Symbols` (U+2600–U+26FF) и `Dingbats` (U+2700–U+27BF) помечены в `unicodedata.east_asian_width` как `N` (narrow) или `A` (ambiguous), хотя современные терминалы рендерят их как 2-wide emoji. Variation Selector U+FE0F не был пропущен и учитывался как 1 колонка. Итог: строки с `⚙️ ` (Управление) и `🛡️ ` (Fallbacks) выходили шире остальных, разрушая рамку. Исправлено: добавлены три дополнительных правила в python3-детектор: `0x1F000–0x1FFFF` (SMP emoji), `So + 0x2600–0x27FF` (Misc/Dingbats), пропуск `U+FE0F`.
+
+### 🟡 Исправлено
+
+**`modules/00-header.sh` — версия `v2.7.1` не совпадала с `01-constants.sh` (`2.7.2`)**  
+При сборке модулей в бинарник шапка содержала старую версию. Исправлено синхронно с `01-constants.sh`.
+
+---
+
+## [2.7.3] — 2026-03-30
+
+### 🔴 Исправлено (критичные)
+
+**`install.sh` — `local` за пределами функции → сбой на шаге 4**  
+При выборе SNI-режима (`USE_STREAM=true`) переменная `XRAY_LOCAL_PORT` объявлялась с ключевым словом `local` на верхнем уровне скрипта, вне какой-либо функции. В bash `local` вне функции — синтаксическая ошибка: `local: can only be used in a function`. Скрипт падал после шага TLS-сертификата, не дойдя до установки Xray. Исправлено: убрано `local`, переменная остаётся глобальной в рамках скрипта.
+
+**`install.sh` — `conflicting server name` + `emerg` при переустановке**  
+При повторном запуске `install.sh` старый `vpn.conf` оставался в `/etc/nginx/sites-enabled/`. Временный `acme-temp.conf` добавлял второй `server_name` на том же порту 80 → nginx выдавал `[warn] conflicting server name` и `[emerg] could not build server_names_hash`. Команда `nginx -t -q` возвращала ненулевой код → скрипт прерывался, не дойдя до certbot. Исправлено: старый `vpn.conf` убирается из `sites-enabled` до первого `nginx -t`.
+
+**`nginx.conf` — `could not build server_names_hash_bucket_size: 32`**  
+Дефолтный `server_names_hash_bucket_size` в nginx равен 32 байта. Домены длиннее ~20 символов (например `sub.graycloudx.mooo.com`) не влезают → nginx отказывался стартовать с `[emerg] could not build server_names_hash`. Исправлено: добавлено `server_names_hash_bucket_size 64` в блок `http {}`.
+
+### 🟡 Исправлено
+
+**`vpn.conf` — `[warn] ssl_stapling ignored` при отсутствии OCSP URL в сертификате**  
+Let's Encrypt через certbot включает OCSP URL в `fullchain.pem`, но некоторые конфигурации (acme.sh без флага, промежуточные CA) — нет. Nginx видел `ssl_stapling on` без OCSP-адреса и писал предупреждение при каждом старте. Исправлено: `install.sh` проверяет наличие OCSP URL через `openssl x509` и автоматически выставляет `ssl_stapling off` если URL отсутствует.
+
+---
+
 ## [2.7.1] — 2026-03-30
 
 ### 🔴 Исправлено (критичные)
