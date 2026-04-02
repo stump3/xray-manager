@@ -9,11 +9,11 @@
 
 ### 🔴 Исправлено (критичные)
 
-- **`modules/04-xray-core.sh`** — `_init_config`: если `config.json` существует,
+**`modules/04-xray-core.sh`** — `_init_config`: если `config.json` существует,
   но создан `install-release.sh` без блоков `stats`/`api`/`policy`, функция
   раньше выходила по `[[ -f ]]`. Теперь валидирует содержимое через `jq`
   и пересоздаёт конфиг с резервной копией при несоответствии.
-- **`modules/08-protocols.sh`** — во всех шести TLS-протоколах (`vless-ws`,
+**`modules/08-protocols.sh`** — во всех шести TLS-протоколах (`vless-ws`,
   `vless-grpc`, `vless-httpupgrade`, `vmess-ws`, `vmess-tcp`, `trojan`)
   `cert_check` выполнялся **после** записи ключей через `kset`. При отсутствии
   сертификата ключи оставались записаны, состояние становилось мусорным.
