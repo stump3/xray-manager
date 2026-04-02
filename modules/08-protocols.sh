@@ -129,6 +129,7 @@ proto_vless_ws_tls() {
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
     port_check "$port" || { pause; return; }
     local uuid; uuid=$("$XRAY_BIN" uuid 2>/dev/null)
+    cert_check "$cert_p" "$key_p" || { pause; return; }
     kset "$tag" domain "$dom"; kset "$tag" port "$port"
     kset "$tag" path "$path_v"; kset "$tag" type "vless-ws"
     local ib; ib=$(jq -n \
@@ -142,7 +143,6 @@ proto_vless_ws_tls() {
                 "certificates":[{"certificateFile":$cert,"keyFile":$key}]},
             "wsSettings":{"path":$path}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
-    cert_check "$cert_p" "$key_p" || { pause; return; }
     ib_add "$ib"; xray_restart
     cls; box_top " ✅  VLESS + WS + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  Домен: ${WHITE}${dom}${R}"
@@ -172,6 +172,7 @@ proto_vless_grpc_tls() {
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
     port_check "$port" || { pause; return; }
     local uuid; uuid=$("$XRAY_BIN" uuid 2>/dev/null)
+    cert_check "$cert_p" "$key_p" || { pause; return; }
     kset "$tag" domain "$dom"; kset "$tag" port "$port"
     kset "$tag" serviceName "$svc"; kset "$tag" type "vless-grpc"
     local ib; ib=$(jq -n \
@@ -185,7 +186,6 @@ proto_vless_grpc_tls() {
                 "certificates":[{"certificateFile":$cert,"keyFile":$key}]},
             "grpcSettings":{"serviceName":$svc,"multiMode":false}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
-    cert_check "$cert_p" "$key_p" || { pause; return; }
     ib_add "$ib"; xray_restart
     cls; box_top " ✅  VLESS + gRPC + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}"
@@ -219,6 +219,7 @@ proto_vless_httpupgrade_tls() {
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
     port_check "$port" || { pause; return; }
     local uuid; uuid=$("$XRAY_BIN" uuid 2>/dev/null)
+    cert_check "$cert_p" "$key_p" || { pause; return; }
     kset "$tag" domain "$dom"; kset "$tag" port "$port"
     kset "$tag" path "$path_v"; kset "$tag" type "vless-httpupgrade"
     local ib; ib=$(jq -n \
@@ -232,7 +233,6 @@ proto_vless_httpupgrade_tls() {
                 "certificates":[{"certificateFile":$cert,"keyFile":$key}]},
             "httpupgradeSettings":{"path":$path,"host":$sni}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
-    cert_check "$cert_p" "$key_p" || { pause; return; }
     ib_add "$ib"; xray_restart
     cls; box_top " ✅  VLESS + HTTPUpgrade + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  Path: ${WHITE}${path_v}${R}"
@@ -261,6 +261,7 @@ proto_vmess_ws_tls() {
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
     port_check "$port" || { pause; return; }
     local uuid; uuid=$("$XRAY_BIN" uuid 2>/dev/null)
+    cert_check "$cert_p" "$key_p" || { pause; return; }
     kset "$tag" domain "$dom"; kset "$tag" port "$port"
     kset "$tag" path "$path_v"; kset "$tag" type "vmess-ws"
     local ib; ib=$(jq -n \
@@ -274,7 +275,6 @@ proto_vmess_ws_tls() {
                 "certificates":[{"certificateFile":$cert,"keyFile":$key}]},
             "wsSettings":{"path":$path,"headers":{"Host":$sni}}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
-    cert_check "$cert_p" "$key_p" || { pause; return; }
     ib_add "$ib"; xray_restart
     cls; box_top " ✅  VMess + WS + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  Домен: ${WHITE}${dom}${R}"
@@ -302,6 +302,7 @@ proto_vmess_tcp_tls() {
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
     port_check "$port" || { pause; return; }
     local uuid; uuid=$("$XRAY_BIN" uuid 2>/dev/null)
+    cert_check "$cert_p" "$key_p" || { pause; return; }
     kset "$tag" domain "$dom"; kset "$tag" port "$port"
     kset "$tag" type "vmess-tcp"
     local ib; ib=$(jq -n \
@@ -313,7 +314,6 @@ proto_vmess_tcp_tls() {
             "tlsSettings":{"serverName":$sni,"alpn":["h2","http/1.1"],
                 "certificates":[{"certificateFile":$cert,"keyFile":$key}]}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
-    cert_check "$cert_p" "$key_p" || { pause; return; }
     ib_add "$ib"; xray_restart
     cls; box_top " ✅  VMess + TCP + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  Домен: ${WHITE}${dom}${R}"
@@ -341,6 +341,7 @@ proto_trojan_tls() {
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
     port_check "$port" || { pause; return; }
     local pass; pass=$(openssl rand -hex 16)
+    cert_check "$cert_p" "$key_p" || { pause; return; }
     kset "$tag" domain "$dom"; kset "$tag" port "$port"
     kset "$tag" type "trojan"
     local ib; ib=$(jq -n \
@@ -352,7 +353,6 @@ proto_trojan_tls() {
             "tlsSettings":{"serverName":$sni,"alpn":["h2","http/1.1"],
                 "certificates":[{"certificateFile":$cert,"keyFile":$key}]}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
-    cert_check "$cert_p" "$key_p" || { pause; return; }
     ib_add "$ib"; xray_restart
     cls; box_top " ✅  Trojan + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  Домен: ${WHITE}${dom}${R}"
