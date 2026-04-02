@@ -53,7 +53,11 @@ install_self() {
 }
 
 _init_config() {
-    [[ -f "$XRAY_CONF" ]] && return
+    if [[ -f "$XRAY_CONF" ]]; then
+        local _ok; _ok=$(jq -r '(.stats // empty) + (.api.tag // empty) + (.policy // empty | tostring)' "$XRAY_CONF" 2>/dev/null || echo "")
+        [[ -n "$_ok" ]] && return
+        warn "config.json существует, но не содержит stats/api/policy — пересоздаём..."
+    fi
     cat > "$XRAY_CONF" << 'JSON'
 {
   "log": {"loglevel": "warning", "access": "/var/log/xray/access.log", "error": "/var/log/xray/error.log"},
