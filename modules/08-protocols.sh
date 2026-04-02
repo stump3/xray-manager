@@ -1092,6 +1092,7 @@ proto_vless_splithttp_tls() {
     else
         alpn_json='["h3"]'
     fi
+    cert_check "$cert_p" "$key_p" || { pause; return; }
     kset "$tag" domain "$dom"; kset "$tag" port "$port"
     kset "$tag" path "$path_v"; kset "$tag" type "vless-splithttp"
     local ib; ib=$(jq -n \
@@ -1110,7 +1111,6 @@ proto_vless_splithttp_tls() {
                 "alpn":$alpn,
                 "certificates":[{"certificateFile":$cert,"keyFile":$key}]}},
         "sniffing":{"enabled":true,"destOverride":["http","tls","quic"]}}')
-    cert_check "$cert_p" "$key_p" || { pause; return; }
     ib_add "$ib"; xray_restart
     cls; box_top " ✅  VLESS + SplitHTTP + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}"
