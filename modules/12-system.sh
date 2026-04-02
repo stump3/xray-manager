@@ -1,6 +1,6 @@
 menu_system() {
     while true; do
-        cls; box_top " 🛠  Система" "$ORANGE"; box_blank; box_mid
+        cls; box_top " 🛠  Сервер" "$ORANGE"; box_blank; box_mid
         mi "1" "🔧" "BBR + оптимизация сети"
         mi "2" "💾" "Бэкап конфигурации"
         mi "3" "♻️ " "Восстановить конфиг"
@@ -8,22 +8,6 @@ menu_system() {
         mi "5" "🔍" "Проверить лимиты вручную"
         mi "6" "📋" "Посмотреть текущий config.json"
         mi "7" "🗑" "${RED}Удалить Xray полностью${R}"
-        box_row "  ${MAGENTA}${BOLD}Расширенные функции${R}"
-        # Показать статус фрагментации в меню
-        local _frag_status=""
-        if _fragment_is_enabled 2>/dev/null; then
-            local _fp; _fp=$(jq -r '.outbounds[]|select(.protocol=="freedom")|.settings.fragment.packets // ""' "$XRAY_CONF" 2>/dev/null | head -1)
-            _frag_status="${GREEN}● ${_fp}${R}"
-        else
-            _frag_status="${DIM}○ выкл${R}"
-        fi
-        printf "${DIM}│${R}  ${YELLOW}${BOLD}%s)${R} %s ${CYAN}Fragment — фрагментация TLS${R}  %b%-*s${DIM}│${R}
-" \
-            "8" "🧩" "$_frag_status" $(($(tw)-52)) ""
-        mi "9" "🔊" "${CYAN}Noises — UDP шум перед соединением${R}"
-        mi "10" "🛡️ " "${YELLOW}Fallbacks — защита от зондирования${R}"
-        mi "11" "⚖️ " "${MAGENTA}Балансировщик нагрузки + Observatory${R}"
-        mi "12" "🚀" "${GREEN}Hysteria2 Outbound — relay/цепочка${R}"
         box_mid; mi "0" "◀" "Назад"; box_end
         read -rp "$(printf "${YELLOW}›${R} ") " ch
         case "$ch" in
@@ -34,11 +18,6 @@ menu_system() {
             5) cls; check_limits; pause ;;
             6) cls; cat "$XRAY_CONF" | python3 -m json.tool 2>/dev/null || cat "$XRAY_CONF"; pause ;;
             7) do_remove_all ;;
-            8) menu_freedom_fragment ;;
-            9) menu_freedom_noises ;;
-            10) menu_fallbacks ;;
-            11) menu_balancer ;;
-            12) menu_hysteria_outbound ;;
             0) return ;;
         esac
     done
