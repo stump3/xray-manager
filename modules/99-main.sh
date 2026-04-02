@@ -55,35 +55,55 @@ main_menu() {
 
         # ── Меню ──────────────────────────────────────────────────────────────
         printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
-        mi "1" "🔧" "Установка / Обновление Xray"
-        mi "2" "🌐" "Протоколы Xray"   "(добавить / удалить)"
-        mi "3" "👥" "Пользователи Xray" "(добавить / лимиты / QR)"
-        mi "4" "⚙️ " "Управление Xray"  "(статус / логи / гео)"
-        mi "5" "🛠" "Система"           "(BBR / бэкап / удалить)"
-
-        # Строка роутинга — используем mi() для корректного выравнивания
-        local _rp; _rp=$(routing_active_profile 2>/dev/null || echo "custom")
-        local _rn; _rn=$(routing_rules_count 2>/dev/null || echo 0)
-        mi "R" "🗺" "${CYAN}Маршрутизация${R}" "${DIM}профиль: ${_rp} · ${_rn} правил${R}"
-
-        printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
-        mi "6" "📡" "${MAGENTA}MTProto (Telegram)${R}"   "$mt_st"
-        mi "7" "🚀" "${ORANGE}Hysteria2 (QUIC/UDP)${R}"  "$hy_st"
+        mi "1" "🔌" "Протоколы и пользователи" "(добавить / удалить / QR / лимиты)"
+        mi "2" "⚙️ " "Xray"                     "(управление / маршрутизация / обновление)"
+        mi "3" "🌐" "Транспорты"                "$( [[ -n "$mt_st$hy_st" ]] && echo "(MTProto · Hysteria2)" || echo "(MTProto / Hysteria2)" )"
+        mi "4" "🛠" "Сервер"                    "(BBR / бэкап / удалить)"
         printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
         mi "0" "🚪" "Выход"
         printf "${DIM}╰%s╯${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
 
         read -rp "$(printf "${YELLOW}›${R} ") " ch
         case "$ch" in
-            1) install_xray_core ;;
-            2) menu_protocols ;;
-            3) menu_users ;;
-            4) menu_manage ;;
-            5) menu_system ;;
-            R|r) menu_routing ;;
-            6) telemt_section ;;
-            7) hysteria_section ;;
+            1) menu_protocols ;;
+            2) menu_manage ;;
+            3) menu_transports ;;
+            4) menu_system ;;
             0) cls; echo -e "${CYAN}До свидания!${R}"; exit 0 ;;
+        esac
+    done
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  ТРАНСПОРТЫ (MTProto + Hysteria2)
+# ──────────────────────────────────────────────────────────────────────────────
+
+menu_transports() {
+    while true; do
+        cls; box_top " 🌐  Транспорты" "$CYAN"; box_blank
+
+        local mt_st="" hy_st=""
+        if systemctl is-active --quiet telemt 2>/dev/null || \
+           { docker ps --format "{{.Names}}" 2>/dev/null || true; } | grep -q "^telemt$"; then
+            mt_st=" ${GREEN}●${R} ${DIM}$(get_telemt_version 2>/dev/null)${R}"
+        else
+            mt_st=" ${DIM}○ не запущен${R}"
+        fi
+        hy_is_running 2>/dev/null \
+            && hy_st=" ${GREEN}●${R} ${DIM}$(get_hysteria_version 2>/dev/null)${R}" \
+            || hy_st=" ${DIM}○ не запущен${R}"
+
+        box_row "  📡 MTProto:   ${mt_st}"
+        box_row "  🚀 Hysteria2: ${hy_st}"
+        box_blank; box_mid
+        mi "1" "📡" "${MAGENTA}MTProto (Telegram)${R}"
+        mi "2" "🚀" "${ORANGE}Hysteria2 (QUIC/UDP)${R}"
+        box_mid; mi "0" "◀" "Назад"; box_end
+        read -rp "$(printf "${YELLOW}›${R} ") " ch
+        case "$ch" in
+            1) telemt_section ;;
+            2) hysteria_section ;;
+            0) return ;;
         esac
     done
 }
