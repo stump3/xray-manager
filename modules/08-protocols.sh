@@ -7,9 +7,13 @@ proto_vless_tcp_reality() {
     box_blank
     xray_ok || { box_row "  ${RED}Установите ядро Xray!${R}"; box_end; pause; return; }
     local port sni tag
-    # stream-режим: читаем сохранённый внутренний порт
-    local _stream_port=""
+    local _stream_port="" _nginx_port="" _domain=""
     [[ -f /root/.xray-reality-local-port ]] && _stream_port=$(cat /root/.xray-reality-local-port)
+    if [[ -f /root/.xray-mgr-install ]]; then
+        _nginx_port=$(grep -oP '^NGINX_PORT="\K[^"]+' /root/.xray-mgr-install 2>/dev/null || true)
+        _domain=$(grep -oP '^DOMAIN="\K[^"]+' /root/.xray-mgr-install 2>/dev/null || true)
+    fi
+
     if [[ -n "$_stream_port" ]]; then
         port="$_stream_port"
         box_row "  ${YELLOW}ℹ Nginx stream — Xray слушает на 127.0.0.1:${port}${R}"
@@ -18,7 +22,27 @@ proto_vless_tcp_reality() {
     else
         ask "Порт (Xray inbound)" port "443"
     fi
-    ask "SNI (камуфляжный домен)" sni "www.microsoft.com"
+
+    # Steal yourself: SNI = наш домен, target = наш nginx (127.0.0.1:NGINX_PORT)
+    # Xray форвардит зондировщиков на наш же сайт → идеальная маскировка
+    local _sni_default="www.microsoft.com" _target_default=""
+    if [[ -n "$_nginx_port" && -n "$_domain" ]]; then
+        _sni_default="$_domain"
+        _target_default="127.0.0.1:${_nginx_port}"
+        box_row "  ${GREEN}✓ Steal yourself доступен — target = ваш nginx (${_target_default})${R}"
+        box_row "  ${DIM}SNI = ваш домен, зондировщики получают ваш LE-сертификат${R}"
+        box_blank
+    fi
+
+    ask "SNI (камуфляжный домен)" sni "${_sni_default}"
+
+    # target: если SNI == наш домен → steal yourself, иначе → внешний домен:443
+    local _target
+    if [[ "$sni" == "$_domain" && -n "$_nginx_port" ]]; then
+        _target="127.0.0.1:${_nginx_port}"
+    else
+        _target="${sni}:443"
+    fi
     ask "Тег (уникальный ID)" tag "vless-reality"
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
     port_check "$port" || { pause; return; }
@@ -33,21 +57,21 @@ proto_vless_tcp_reality() {
     kset "$tag" privateKey "$priv"; kset "$tag" publicKey "$pub"
     kset "$tag" shortId "$sid"; kset "$tag" sni "$sni"
     kset "$tag" port "$port"; kset "$tag" type "vless-reality"
-    # stream-режим: внешний порт 443, клиент подключается через nginx stream
     [[ -n "$_stream_port" ]] && kset "$tag" ext_port "443"
     local ib; ib=$(jq -n \
         --arg tag "$tag" --argjson port "$port" --arg uuid "$uuid" \
         --arg priv "$priv" --arg sni "$sni" --arg sid "$sid" \
-        --arg listen "$_listen_addr" '{
+        --arg listen "$_listen_addr" --arg target "$_target" '{
         "tag":$tag,"listen":$listen,"port":$port,"protocol":"vless",
         "settings":{"clients":[{"email":"main","id":$uuid,"flow":"xtls-rprx-vision"}],"decryption":"none"},
         "streamSettings":{"network":"tcp","security":"reality","realitySettings":{
-            "show":false,"target":($sni+":443"),"xver":0,
+            "show":false,"target":$target,"xver":0,
             "serverNames":[$sni],"privateKey":$priv,"shortIds":[$sid]}},
         "sniffing":{"enabled":true,"destOverride":["http","tls","quic"],"routeOnly":true}}')
     ib_add "$ib"; xray_restart
     cls; box_top " ✅  VLESS + TCP + REALITY добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  SNI: ${WHITE}${sni}${R}"
+    box_row "  Target:    ${DIM}${_target}${R}"
     box_row "  PublicKey: ${DIM}${pub}${R}"
     box_row "  ShortId:   ${DIM}${sid}${R}"
     if [[ -n "$_stream_port" ]]; then
@@ -69,12 +93,23 @@ proto_vless_xhttp_reality() {
     box_blank
     xray_ok || { box_row "  ${RED}Установите ядро Xray!${R}"; box_end; pause; return; }
     local port sni path_v tag mode_v
-    local _stream_port=""
+    local _stream_port="" _nginx_port="" _domain=""
     [[ -f /root/.xray-reality-local-port ]] && _stream_port=$(cat /root/.xray-reality-local-port)
+    if [[ -f /root/.xray-mgr-install ]]; then
+        _nginx_port=$(grep -oP '^NGINX_PORT="\K[^"]+' /root/.xray-mgr-install 2>/dev/null || true)
+        _domain=$(grep -oP '^DOMAIN="\K[^"]+' /root/.xray-mgr-install 2>/dev/null || true)
+    fi
     [[ -n "$_stream_port" ]] && {
         box_row "  ${YELLOW}ℹ Nginx stream — Xray слушает на 127.0.0.1:${_stream_port}${R}"; box_blank; }
+    local _sni_default="www.microsoft.com"
+    if [[ -n "$_nginx_port" && -n "$_domain" ]]; then
+        _sni_default="$_domain"
+        box_row "  ${GREEN}✓ Steal yourself — target = ваш nginx (127.0.0.1:${_nginx_port})${R}"; box_blank
+    fi
     ask "Порт" port "${_stream_port:-443}"
-    ask "SNI" sni "www.microsoft.com"
+    ask "SNI" sni "$_sni_default"
+    local _target; [[ "$sni" == "$_domain" && -n "$_nginx_port" ]] \
+        && _target="127.0.0.1:${_nginx_port}" || _target="${sni}:443"
     ask "Path" path_v "/"
     ask "Режим (auto/packet-up/stream-up/stream-one)" mode_v "auto"
     ask "Тег" tag "vless-xhttp"
@@ -96,18 +131,19 @@ proto_vless_xhttp_reality() {
     local ib; ib=$(jq -n \
         --arg tag "$tag" --argjson port "$port" --arg uuid "$uuid" \
         --arg priv "$priv" --arg sni "$sni" --arg sid "$sid" \
-        --arg path "$path_v" --arg mode "$mode_v" --arg listen "$_listen_addr" '{
+        --arg path "$path_v" --arg mode "$mode_v" --arg listen "$_listen_addr" \
+        --arg target "$_target" '{
         "tag":$tag,"listen":$listen,"port":$port,"protocol":"vless",
         "settings":{"clients":[{"email":"main","id":$uuid,"flow":""}],"decryption":"none"},
         "streamSettings":{"network":"xhttp","security":"reality",
             "xhttpSettings":{"path":$path,"mode":$mode},
-            "realitySettings":{"show":false,"target":($sni+":443"),"xver":0,
+            "realitySettings":{"show":false,"target":$target,"xver":0,
                 "serverNames":[$sni],"privateKey":$priv,"shortIds":[$sid]}},
         "sniffing":{"enabled":true,"destOverride":["http","tls","quic"],"routeOnly":true}}')
     ib_add "$ib"; xray_restart
     cls; box_top " ✅  VLESS + XHTTP + REALITY добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  SNI: ${WHITE}${sni}${R}"
-    box_row "  Path: ${WHITE}${path_v}${R}  Режим: ${CYAN}${mode_v}${R}"
+    box_row "  Target: ${DIM}${_target}${R}  Path: ${WHITE}${path_v}${R}  Режим: ${CYAN}${mode_v}${R}"
     box_row "  PublicKey: ${DIM}${pub}${R}"
     box_blank; box_end
     show_link_qr "$tag" "main"
@@ -1031,12 +1067,23 @@ proto_vless_grpc_reality() {
     box_blank
     xray_ok || { box_row "  ${RED}Установите ядро Xray!${R}"; box_end; pause; return; }
     local port sni svc tag
-    local _stream_port=""
+    local _stream_port="" _nginx_port="" _domain=""
     [[ -f /root/.xray-reality-local-port ]] && _stream_port=$(cat /root/.xray-reality-local-port)
+    if [[ -f /root/.xray-mgr-install ]]; then
+        _nginx_port=$(grep -oP '^NGINX_PORT="\K[^"]+' /root/.xray-mgr-install 2>/dev/null || true)
+        _domain=$(grep -oP '^DOMAIN="\K[^"]+' /root/.xray-mgr-install 2>/dev/null || true)
+    fi
     [[ -n "$_stream_port" ]] && {
         box_row "  ${YELLOW}ℹ Nginx stream — Xray слушает на 127.0.0.1:${_stream_port}${R}"; box_blank; }
+    local _sni_default="www.yahoo.com"
+    if [[ -n "$_nginx_port" && -n "$_domain" ]]; then
+        _sni_default="$_domain"
+        box_row "  ${GREEN}✓ Steal yourself — target = ваш nginx (127.0.0.1:${_nginx_port})${R}"; box_blank
+    fi
     ask "Порт" port "${_stream_port:-443}"
-    ask "SNI (камуфляжный домен)" sni "www.yahoo.com"
+    ask "SNI (камуфляжный домен)" sni "$_sni_default"
+    local _target; [[ "$sni" == "$_domain" && -n "$_nginx_port" ]] \
+        && _target="127.0.0.1:${_nginx_port}" || _target="${sni}:443"
     ask "gRPC ServiceName" svc "grpc"
     ask "Тег" tag "vless-grpc-reality"
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
@@ -1057,18 +1104,18 @@ proto_vless_grpc_reality() {
     local ib; ib=$(jq -n \
         --arg tag "$tag" --argjson port "$port" --arg uuid "$uuid" \
         --arg priv "$priv" --arg sni "$sni" --arg sid "$sid" --arg svc "$svc" \
-        --arg listen "$_listen_addr" '{
+        --arg listen "$_listen_addr" --arg target "$_target" '{
         "tag":$tag,"listen":$listen,"port":$port,"protocol":"vless",
         "settings":{"clients":[{"email":"main","id":$uuid,"flow":""}],"decryption":"none"},
         "streamSettings":{"network":"grpc","security":"reality",
             "grpcSettings":{"serviceName":$svc,"multiMode":false},
-            "realitySettings":{"show":false,"target":($sni+":443"),"xver":0,
+            "realitySettings":{"show":false,"target":$target,"xver":0,
                 "serverNames":[$sni],"privateKey":$priv,"shortIds":[$sid]}},
         "sniffing":{"enabled":true,"destOverride":["http","tls","quic"],"routeOnly":true}}')
     ib_add "$ib"; xray_restart
     cls; box_top " ✅  VLESS + gRPC + REALITY добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  SNI: ${WHITE}${sni}${R}"
-    box_row "  ServiceName: ${CYAN}${svc}${R}"
+    box_row "  Target: ${DIM}${_target}${R}  ServiceName: ${CYAN}${svc}${R}"
     box_row "  PublicKey: ${DIM}${pub}${R}"
     box_row "  ShortId:   ${DIM}${sid}${R}"
     box_blank; box_end
