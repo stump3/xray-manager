@@ -474,7 +474,12 @@ fi
 
 ln -sf "$VHOST_DST" /etc/nginx/sites-enabled/vpn.conf
 rm -f /etc/nginx/sites-enabled/acme-temp.conf
-nginx -t -q && systemctl restart nginx
+if ! nginx -t 2>/tmp/nginx_test.log; then
+    err "nginx -t провалился:"; cat /tmp/nginx_test.log >&2; exit 1
+fi
+systemctl restart nginx || {
+    err "nginx не запустился:"; journalctl -u nginx -n 10 --no-pager >&2; exit 1
+}
 ok "Nginx настроен (порт ${NGINX_PORT})"
 
 # ══════════════════════════════════════════════════════════════
