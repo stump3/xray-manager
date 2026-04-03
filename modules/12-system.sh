@@ -86,36 +86,67 @@ do_restore() {
 }
 
 do_remove_all() {
-    cls; box_top " 🗑  Удаление Xray" "$RED"; box_blank
-    box_row "  ${RED}${BOLD}ЭТО УДАЛИТ ВСЁ: ядро, конфиги, ключи, логи!${R}"
+    cls; box_top " 🗑  Полное удаление" "$RED"; box_blank
+    box_row "  ${RED}${BOLD}Удаляет: Xray, Hysteria2, telemt, nginx конфиги, ключи, логи!${R}"
     box_blank; box_end
     confirm "Вы уверены?" "n" || return
     confirm "Последнее предупреждение. Продолжить?" "n" || return
-    
-    # 🔧 БАГ 4 FIX: удалить ВСЕ следы установки
+
+    # Xray — через официальный установщик
     bash -c "$(curl -4 -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" \
         @ remove --purge 2>/dev/null || true
-    
-    # Xray конфиги и ключи
-    rm -f "$XRAY_CONF" "$LIMITS_FILE" "${XRAY_KEYS_DIR}"/.keys.* 
-    
-    # Nginx конфиги (все xray-related файлы)
-    rm -f /etc/nginx/conf.d/xray*.conf /etc/nginx/conf.d/*-vless*.conf /etc/nginx/conf.d/*-reality*.conf \
-          /etc/nginx/conf.d/*-vmess*.conf /etc/nginx/conf.d/*-trojan*.conf /etc/nginx/conf.d/*-hysteria*.conf \
-          /etc/nginx/stream.d/stream-443.conf 2>/dev/null || true
-    
-    # Параметры установки
-    rm -f /root/.xray-mgr-install
-    
-    # Менеджер бинарник
-    rm -f "$MANAGER_BIN"
-    
-    # Systemd таймеры для лимитов
-    systemctl disable --now xray-limits.timer 2>/dev/null || true
+    # Остатки которые установщик не чистит
+    systemctl stop xray 2>/dev/null || true
+    systemctl disable xray 2>/dev/null || true
+    rm -f  /etc/systemd/system/xray.service \
+           /etc/systemd/system/xray@.service \
+           /etc/systemd/system/multi-user.target.wants/xray.service 2>/dev/null || true
+    rm -rf /etc/systemd/system/xray.service.d \
+           /etc/systemd/system/xray@.service.d 2>/dev/null || true
+    rm -f  /usr/local/bin/xray 2>/dev/null || true
+    rm -rf /usr/local/share/xray /run/xray 2>/dev/null || true
+    rm -f  "$XRAY_CONF" "$LIMITS_FILE" "${XRAY_KEYS_DIR}"/.keys.* 2>/dev/null || true
+    rm -rf "$XRAY_LOG_DIR" 2>/dev/null || true
+
+    # Hysteria2
+    systemctl stop hysteria-server 2>/dev/null || true
+    systemctl disable hysteria-server 2>/dev/null || true
+    rm -f /etc/systemd/system/hysteria-server.service \
+          /usr/local/bin/hysteria /usr/bin/hysteria 2>/dev/null || true
+    rm -rf /etc/hysteria 2>/dev/null || true
+    rm -f /root/hysteria-*.txt 2>/dev/null || true
+
+    # telemt (systemd)
+    systemctl stop telemt 2>/dev/null || true
+    systemctl disable telemt 2>/dev/null || true
+    rm -f /etc/systemd/system/telemt.service /usr/local/bin/telemt 2>/dev/null || true
+    rm -rf /etc/telemt /opt/telemt 2>/dev/null || true
+
+    # telemt (Docker)
+    { docker compose -f "${HOME}/mtproxy/docker-compose.yml" down 2>/dev/null || true; }
+    rm -rf "${HOME}/mtproxy" 2>/dev/null || true
+
+    # Nginx конфиги
+    rm -f /etc/nginx/sites-enabled/vpn.conf \
+          /etc/nginx/sites-available/vpn.conf \
+          /etc/nginx/stream.d/stream-443.conf \
+          /etc/nginx/conf.d/stream-443.conf 2>/dev/null || true
+
+    # xray-manager
+    rm -f "$MANAGER_BIN" 2>/dev/null || true
+
+    # Systemd таймеры лимитов
+    systemctl stop xray-limits.timer 2>/dev/null || true
+    systemctl disable xray-limits.timer 2>/dev/null || true
     rm -f /etc/systemd/system/xray-limits.* 2>/dev/null || true
+
+    # Файлы состояния
+    rm -f /root/.xray-mgr-install /root/.xray-reality-local-port 2>/dev/null || true
+
+    systemctl daemon-reexec 2>/dev/null || true
     systemctl daemon-reload 2>/dev/null || true
-    
-    ok "Xray полностью удалён"; exit 0
+
+    ok "Всё удалено"; exit 0
 }
 
 # ──────────────────────────────────────────────────────────────────────────────

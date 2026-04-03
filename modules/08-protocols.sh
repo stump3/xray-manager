@@ -10,9 +10,14 @@ proto_vless_tcp_reality() {
     # stream-режим: читаем сохранённый внутренний порт
     local _stream_port=""
     [[ -f /root/.xray-reality-local-port ]] && _stream_port=$(cat /root/.xray-reality-local-port)
-    [[ -n "$_stream_port" ]] && {
-        box_row "  ${YELLOW}ℹ Nginx stream — Xray слушает на 127.0.0.1:${_stream_port}${R}"; box_blank; }
-    ask "Порт (Xray inbound)" port "${_stream_port:-443}"
+    if [[ -n "$_stream_port" ]]; then
+        port="$_stream_port"
+        box_row "  ${YELLOW}ℹ Nginx stream — Xray слушает на 127.0.0.1:${port}${R}"
+        box_row "  ${DIM}Порт зафиксирован: ${port} (внешний: 443 через nginx stream)${R}"
+        box_blank
+    else
+        ask "Порт (Xray inbound)" port "443"
+    fi
     ask "SNI (камуфляжный домен)" sni "www.microsoft.com"
     ask "Тег (уникальный ID)" tag "vless-reality"
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
@@ -45,6 +50,12 @@ proto_vless_tcp_reality() {
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  SNI: ${WHITE}${sni}${R}"
     box_row "  PublicKey: ${DIM}${pub}${R}"
     box_row "  ShortId:   ${DIM}${sid}${R}"
+    if [[ -n "$_stream_port" ]]; then
+        box_blank
+        box_row "  ${YELLOW}ℹ Тест задержки в клиенте покажет -1 — это нормально.${R}"
+        box_row "  ${DIM}Клиент тестирует TCP:443 без REALITY-рукопожатия → Xray отваливается.${R}"
+        box_row "  ${DIM}Реальный трафик (туннель) работает: SNI → nginx stream → Xray → OK.${R}"
+    fi
     box_blank; box_end
     show_link_qr "$tag" "main"
 }

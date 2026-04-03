@@ -1,3 +1,11 @@
+# Формирует отображаемое имя для URI-фрагмента (#name).
+# email="main" (первый/единственный пользователь) → показывает тег протокола.
+# Остальные пользователи → "tag@email" (например vless-de@alice).
+_link_name() {
+    local tag="$1" email="$2"
+    [[ "$email" == "main" ]] && echo "$tag" || echo "${tag}@${email}"
+}
+
 gen_link() {
     local tag="$1" email="$2"
     local proto; proto=$(ib_proto "$tag")
@@ -20,7 +28,7 @@ gen_link() {
         local ext_port; ext_port=$(kget "$tag" "ext_port" 2>/dev/null || true)
         [[ -n "$ext_port" ]] && port="$ext_port"
         local spx; spx="/$(printf '%s' "${email}" | sha256sum | head -c8)"
-        echo "vless://${uuid}@${sip}:${port}?security=reality&sni=${sni}&fp=firefox&pbk=${pbk}&sid=${sid}&spx=$(urlencode "${spx}")&type=tcp&flow=xtls-rprx-vision&encryption=none#${email}"
+        echo "vless://${uuid}@${sip}:${port}?security=reality&sni=${sni}&fp=firefox&pbk=${pbk}&sid=${sid}&spx=$(urlencode "${spx}")&type=tcp&flow=xtls-rprx-vision&encryption=none#$(_link_name "$tag" "$email")"
         ;;
 
       vless:xhttp)  # VLESS + XHTTP + REALITY
@@ -29,9 +37,12 @@ gen_link() {
             '.inbounds[]|select(.tag==$t)|.settings.clients[]|select(.email==$e)|.id' "$XRAY_CONF")
         sni=$(kget "$tag" "sni"); pbk=$(kget "$tag" "publicKey")
         sid=$(kget "$tag" "shortId"); path_v=$(kget "$tag" "path")
+        # stream-режим: клиент коннектится на внешний порт (443), не на внутренний (18443)
+        local ext_port; ext_port=$(kget "$tag" "ext_port" 2>/dev/null || true)
+        [[ -n "$ext_port" ]] && port="$ext_port"
         local ep; ep=$(urlencode "$path_v")
         local spx; spx="/$(printf '%s' "${email}" | sha256sum | head -c8)"
-        echo "vless://${uuid}@${sip}:${port}?security=reality&path=${ep}&mode=auto&sni=${sni}&fp=firefox&pbk=${pbk}&sid=${sid}&spx=$(urlencode "${spx}")&type=xhttp&encryption=none#${email}"
+        echo "vless://${uuid}@${sip}:${port}?security=reality&path=${ep}&mode=auto&sni=${sni}&fp=firefox&pbk=${pbk}&sid=${sid}&spx=$(urlencode "${spx}")&type=xhttp&encryption=none#$(_link_name "$tag" "$email")"
         ;;
 
       vless:ws)  # VLESS + WS + TLS
@@ -40,7 +51,7 @@ gen_link() {
             '.inbounds[]|select(.tag==$t)|.settings.clients[]|select(.email==$e)|.id' "$XRAY_CONF")
         dom=$(kget "$tag" "domain"); path_v=$(kget "$tag" "path")
         local ep; ep=$(urlencode "$path_v")
-        echo "vless://${uuid}@${dom}:${port}?security=tls&type=ws&path=${ep}&host=${dom}&sni=${dom}&encryption=none#${email}"
+        echo "vless://${uuid}@${dom}:${port}?security=tls&type=ws&path=${ep}&host=${dom}&sni=${dom}&encryption=none#$(_link_name "$tag" "$email")"
         ;;
 
       vless:grpc)  # VLESS + gRPC + TLS
@@ -48,7 +59,7 @@ gen_link() {
         uuid=$(jq -r --arg t "$tag" --arg e "$email" \
             '.inbounds[]|select(.tag==$t)|.settings.clients[]|select(.email==$e)|.id' "$XRAY_CONF")
         dom=$(kget "$tag" "domain"); svc=$(kget "$tag" "serviceName")
-        echo "vless://${uuid}@${dom}:${port}?security=tls&type=grpc&serviceName=${svc}&sni=${dom}&encryption=none#${email}"
+        echo "vless://${uuid}@${dom}:${port}?security=tls&type=grpc&serviceName=${svc}&sni=${dom}&encryption=none#$(_link_name "$tag" "$email")"
         ;;
 
       vless:httpupgrade)  # VLESS + HTTPUpgrade + TLS
@@ -57,7 +68,7 @@ gen_link() {
             '.inbounds[]|select(.tag==$t)|.settings.clients[]|select(.email==$e)|.id' "$XRAY_CONF")
         dom=$(kget "$tag" "domain"); path_v=$(kget "$tag" "path")
         local ep; ep=$(urlencode "$path_v")
-        echo "vless://${uuid}@${dom}:${port}?security=tls&type=httpupgrade&path=${ep}&host=${dom}&sni=${dom}&encryption=none#${email}"
+        echo "vless://${uuid}@${dom}:${port}?security=tls&type=httpupgrade&path=${ep}&host=${dom}&sni=${dom}&encryption=none#$(_link_name "$tag" "$email")"
         ;;
 
       vmess:ws)  # VMess + WS + TLS
@@ -90,7 +101,7 @@ gen_link() {
         pass=$(jq -r --arg t "$tag" --arg e "$email" \
             '.inbounds[]|select(.tag==$t)|.settings.clients[]|select(.email==$e)|.password' "$XRAY_CONF")
         dom=$(kget "$tag" "domain")
-        echo "trojan://${pass}@${dom}:${port}?security=tls&sni=${dom}&type=tcp#${email}"
+        echo "trojan://${pass}@${dom}:${port}?security=tls&sni=${dom}&type=tcp#$(_link_name "$tag" "$email")"
         ;;
 
       hysteria:hysteria)  # Hysteria2 нативный Xray
@@ -98,7 +109,7 @@ gen_link() {
         pass=$(jq -r --arg t "$tag" --arg e "$email" \
             '.inbounds[]|select(.tag==$t)|.settings.users[]|select(.email==$e)|.password' "$XRAY_CONF")
         dom=$(kget "$tag" "domain")
-        echo "hy2://${pass}@${dom}:${port}?sni=${dom}&alpn=h3&insecure=0#${email}"
+        echo "hy2://${pass}@${dom}:${port}?sni=${dom}&alpn=h3&insecure=0#$(_link_name "$tag" "$email")"
         ;;
 
       shadowsocks:tcp|shadowsocks:raw)  # Shadowsocks 2022
@@ -110,7 +121,7 @@ gen_link() {
         local sp; sp=$(kget "$tag" "serverPassword")
         # SS URI
         local userinfo; userinfo=$(echo -n "${method}:${sp}:${pass}" | base64 -w0)
-        echo "ss://${userinfo}@${sip}:${port}#${email}"
+        echo "ss://${userinfo}@${sip}:${port}#$(_link_name "$tag" "$email")"
         ;;
 
       vless:grpc_reality|vless:grpc-reality)  # VLESS + gRPC + REALITY
@@ -118,8 +129,11 @@ gen_link() {
         uuid=$(jq -r --arg t "$tag" --arg e "$email"             '.inbounds[]|select(.tag==$t)|.settings.clients[]|select(.email==$e)|.id' "$XRAY_CONF")
         sni=$(kget "$tag" "sni"); pbk=$(kget "$tag" "publicKey")
         sid=$(kget "$tag" "shortId"); svc=$(kget "$tag" "serviceName")
+        # stream-режим: клиент коннектится на внешний порт (443), не на внутренний (18443)
+        local ext_port; ext_port=$(kget "$tag" "ext_port" 2>/dev/null || true)
+        [[ -n "$ext_port" ]] && port="$ext_port"
         local spx; spx="/$(printf '%s' "${email}" | sha256sum | head -c8)"
-        echo "vless://${uuid}@${sip}:${port}?security=reality&sni=${sni}&fp=firefox&pbk=${pbk}&sid=${sid}&spx=$(urlencode "${spx}")&type=grpc&serviceName=${svc}&encryption=none#${email}"
+        echo "vless://${uuid}@${sip}:${port}?security=reality&sni=${sni}&fp=firefox&pbk=${pbk}&sid=${sid}&spx=$(urlencode "${spx}")&type=grpc&serviceName=${svc}&encryption=none#$(_link_name "$tag" "$email")"
         ;;
 
       vless:splithttp)  # VLESS + SplitHTTP + TLS
@@ -127,7 +141,7 @@ gen_link() {
         uuid=$(jq -r --arg t "$tag" --arg e "$email"             '.inbounds[]|select(.tag==$t)|.settings.clients[]|select(.email==$e)|.id' "$XRAY_CONF")
         dom=$(kget "$tag" "domain"); path_v=$(kget "$tag" "path")
         local ep; ep=$(urlencode "$path_v")
-        echo "vless://${uuid}@${dom}:${port}?security=tls&type=splithttp&path=${ep}&host=${dom}&sni=${dom}&encryption=none#${email}"
+        echo "vless://${uuid}@${dom}:${port}?security=tls&type=splithttp&path=${ep}&host=${dom}&sni=${dom}&encryption=none#$(_link_name "$tag" "$email")"
         ;;
 
       *)
@@ -140,7 +154,7 @@ show_link_qr() {
     local tag="$1" email="$2"
     local link; link=$(gen_link "$tag" "$email")
     if [[ -z "$link" ]]; then warn "Не удалось сгенерировать ссылку для ${proto}+${net}"; return; fi
-    cls; box_top " 🔗  Подключение: ${email}" "$CYAN"
+    cls; box_top " 🔗  Подключение: $(_link_name "$tag" "$email")" "$CYAN"
     box_blank
     box_row "  ${CYAN}${BOLD}Ссылка:${R}"
     # Wrap long link across lines
