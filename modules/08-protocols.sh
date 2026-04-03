@@ -398,6 +398,79 @@ proto_shadowsocks() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
+#  NGINX: auto-patch vhost после добавления WS / gRPC / HTTPUpgrade
+# ──────────────────────────────────────────────────────────────────────────────
+
+_nginx_patch_location() {
+    local proto="$1" dom="$2" port="$3" path_v="$4"
+    # proto: ws | grpc | httpupgrade
+
+    local vhost="/etc/nginx/sites-available/vpn.conf"
+    local state="/root/.xray-mgr-install"
+
+    # Нет vhost — nginx не наш, не трогаем
+    [[ -f "$vhost" ]] || return 0
+
+    # Читаем параметры установки
+    local inst_domain=""
+    [[ -f "$state" ]] && inst_domain=$(grep -oP '^DOMAIN="\K[^"]+' "$state" 2>/dev/null || true)
+
+    # Домен добавляемого протокола не совпадает с установленным — не трогаем
+    [[ "$dom" != "$inst_domain" ]] && return 0
+
+    # Для gRPC location — это ServiceName, для WS/HTTPUpgrade — path
+    local loc_path="$path_v"
+    [[ "$proto" == "grpc" ]] && loc_path="/${path_v}"
+    # Убираем двойной слэш если path_v уже с /
+    loc_path="${loc_path//\/\//\/}"
+
+    # Уже есть такой location?
+    if grep -qF "location ${loc_path}" "$vhost" 2>/dev/null; then
+        warn "nginx: location ${loc_path} уже есть в vhost — пропускаем"
+        return 0
+    fi
+
+    local block
+    case "$proto" in
+        ws|httpupgrade)
+            block="\n    # xray-manager: ${proto} (auto)\n    location ${loc_path} {\n        proxy_pass         http://127.0.0.1:${port};\n        proxy_http_version 1.1;\n        proxy_set_header   Upgrade    \$http_upgrade;\n        proxy_set_header   Connection \"upgrade\";\n        proxy_set_header   Host       \$host;\n        proxy_read_timeout 86400s;\n    }"
+            ;;
+        grpc)
+            block="\n    # xray-manager: grpc (auto)\n    location ${loc_path} {\n        grpc_pass      grpc://127.0.0.1:${port};\n        grpc_read_timeout 300s;\n    }"
+            ;;
+        *) return 0 ;;
+    esac
+
+    # Backup vhost
+    local bak="${vhost}.bak.$(date +%s)"
+    cp "$vhost" "$bak"
+
+    # Вставить block перед последним } в файле
+    local tmp; tmp=$(mktemp); _TMPFILES+=("$tmp")
+    awk -v blk="$block" '
+        { lines[NR] = $0 }
+        END {
+            last = NR
+            for (i = NR; i >= 1; i--) {
+                if (lines[i] ~ /^}[[:space:]]*$/) { last = i; break }
+            }
+            for (i = 1; i < last; i++) print lines[i]
+            printf "%s\n", blk
+            for (i = last; i <= NR; i++) print lines[i]
+        }
+    ' "$vhost" > "$tmp" && mv "$tmp" "$vhost"
+
+    if nginx -t -q 2>/dev/null; then
+        systemctl reload nginx 2>/dev/null \
+            && ok "nginx: location ${loc_path} → :${port} добавлен и применён" \
+            || warn "nginx reload не удался — проверь: systemctl status nginx"
+    else
+        warn "nginx -t провалился — откат vhost"
+        mv "$bak" "$vhost"
+    fi
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
 #  FREEDOM + FRAGMENT (обход фрагментацией TLS)
 # ──────────────────────────────────────────────────────────────────────────────
 
