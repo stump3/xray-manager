@@ -293,6 +293,40 @@ telemt_ask_users() {
     done
 }
 
+_telemt_patch_stream() {
+    local masq_domain="$1" internal_port="$2"
+    local stream_conf="/etc/nginx/stream.d/stream-443.conf"
+
+    [[ -f "$stream_conf" ]] || { warn "stream-443.conf не найден — патч пропущен"; return 1; }
+
+    if grep -q "telemt_local" "$stream_conf" 2>/dev/null; then
+        warn "nginx stream: telemt уже прописан — пропускаем"
+        return 0
+    fi
+
+    local bak="${stream_conf}.bak.$(date +%s)"
+    cp "$stream_conf" "$bak"
+
+    # Экранируем точки в домене для map-паттерна
+    local escaped; escaped=$(echo "$masq_domain" | sed 's/\./\\./g')
+
+    # Вставить map-запись перед строкой "default"
+    sed -i "s|        default |        ${escaped}  telemt_local;\n        default |" "$stream_conf"
+
+    # Вставить upstream перед "upstream nginx_https"
+    sed -i "s|    upstream nginx_https|    upstream telemt_local { server 127.0.0.1:${internal_port}; }\n    upstream nginx_https|" "$stream_conf"
+
+    if nginx -t -q 2>/dev/null; then
+        systemctl reload nginx \
+            && ok "nginx stream: SNI '${masq_domain}' → telemt 127.0.0.1:${internal_port}" \
+            || { warn "nginx reload не удался"; mv "$bak" "$stream_conf"; return 1; }
+    else
+        warn "nginx -t провалился — откат stream conf"
+        mv "$bak" "$stream_conf"
+        return 1
+    fi
+}
+
 telemt_menu_install() {
     header "Установка MTProxy (${TELEMT_MODE})"
     local port; read -rp "Порт прокси [8443]: " port; port="${port:-8443}" < /dev/tty
@@ -301,25 +335,57 @@ telemt_menu_install() {
         read -rp "  Другой порт: " port < /dev/tty
     done
     local domain; read -rp "Домен-маскировка [petrovich.ru]: " domain; domain="${domain:-petrovich.ru}" < /dev/tty
+
+    # Если выбран порт 443 и активен nginx stream — предложить маршрутизацию по SNI
+    # Только для systemd-режима: в Docker 127.0.0.1 — loopback контейнера, не хоста
+    local _use_nginx_stream=false _internal_port="$port"
+    local _stream_conf="/etc/nginx/stream.d/stream-443.conf"
+    if [[ "$port" == "443" && -f "$_stream_conf" && "$TELEMT_MODE" == "systemd" ]]; then
+        echo ""
+        echo -e "  ${YELLOW}Обнаружен nginx stream на 443.${R}"
+        echo -e "  ${DIM}telemt может слушать внутри, а nginx будет направлять трафик"
+        echo -e "  по SNI '${domain}' → telemt. Порт 443 остаётся за nginx.${R}"
+        echo ""
+        local _yn; read -rp "  Маршрутизировать через nginx stream? [Y/n]: " _yn < /dev/tty
+        if [[ "${_yn:-Y}" =~ ^[Yy]$ ]]; then
+            _use_nginx_stream=true
+            read -rp "  Внутренний порт telemt (localhost) [2053]: " _internal_port < /dev/tty
+            _internal_port="${_internal_port:-2053}"
+            while ss -tlnp 2>/dev/null | grep -q ":${_internal_port} "; do
+                warn "Порт ${_internal_port} занят!"
+                read -rp "  Другой внутренний порт: " _internal_port < /dev/tty
+            done
+            ok "telemt → 127.0.0.1:${_internal_port}, nginx stream → 443 (SNI: ${domain})"
+        fi
+    fi
     echo ""; telemt_ask_users
     if [ "$TELEMT_MODE" = "systemd" ]; then
         telemt_pick_version
         telemt_download_binary "$TELEMT_CHOSEN_VERSION"
         id telemt &>/dev/null || useradd -d "$TELEMT_WORK_DIR" -m -r -U telemt
-        telemt_write_config "$port" "$domain" "${TELEMT_USER_PAIRS[@]}"
+        telemt_write_config "$_internal_port" "$domain" "${TELEMT_USER_PAIRS[@]}"
         mkdir -p "$TELEMT_TLSFRONT_DIR"
         chown -R telemt:telemt "$TELEMT_CONFIG_DIR" "$TELEMT_WORK_DIR"
         telemt_write_service
+        # stream-режим: слушаем только на localhost
+        $_use_nginx_stream && sed -i 's/^ip = "0\.0\.0\.0"/ip = "127.0.0.1"/' "$TELEMT_CONFIG_FILE"
         systemctl daemon-reload; systemctl enable telemt; systemctl start telemt
         ok "Сервис запущен"
     else
-        telemt_write_config "$port" "$domain" "${TELEMT_USER_PAIRS[@]}"
-        telemt_write_compose "$port"
+        telemt_write_config "$_internal_port" "$domain" "${TELEMT_USER_PAIRS[@]}"
+        telemt_write_compose "$_internal_port"
+        # stream-режим: слушаем только на localhost
+        $_use_nginx_stream && sed -i 's/^ip = "0\.0\.0\.0"/ip = "127.0.0.1"/' "$TELEMT_CONFIG_FILE"
         cd "$TELEMT_WORK_DIR_DOCKER"
         docker compose pull -q; docker compose up -d
         ok "Контейнер запущен"
     fi
-    command -v ufw &>/dev/null && ufw allow "${port}/tcp" &>/dev/null && ok "ufw: порт $port открыт"
+    if $_use_nginx_stream; then
+        _telemt_patch_stream "$domain" "$_internal_port"
+        ok "MTProto доступен на TCP:443 (nginx stream, SNI: ${domain})"
+    else
+        command -v ufw &>/dev/null && ufw allow "${port}/tcp" &>/dev/null && ok "ufw: порт $port открыт"
+    fi
     sleep 3; header "Ссылки"
     echo -e "${BOLD}IP:${R} $(get_public_ip)"
     telemt_fetch_links
@@ -621,5 +687,3 @@ telemt_section() {
         esac
     done
 }
-
-
