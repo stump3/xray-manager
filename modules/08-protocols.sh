@@ -624,7 +624,7 @@ fallback_add() {
         box_row "  Протокол: ${CYAN}${tag}${R}"
     else
         local i=1
-        for t in "${eligible[@]}"; do mi "$i" "🔌" "$t"; ((i++)); done
+        for t in "${eligible[@]}"; do mi "$i" "🔌" "$t"; ((i++)) || true; done
         box_end; read -rp "$(printf "${YELLOW}›${R} ") " idx
         tag="${eligible[$((idx-1))]}"
     fi
@@ -688,7 +688,7 @@ fallback_clear() {
     done < <(ib_list)
     [[ ${#eligible[@]} -eq 0 ]] && { box_row "  ${DIM}Нет подходящих протоколов${R}"; box_end; pause; return; }
     local i=1
-    for t in "${eligible[@]}"; do mi "$i" "🔌" "$t"; ((i++)); done
+    for t in "${eligible[@]}"; do mi "$i" "🔌" "$t"; ((i++)) || true; done
     box_end; read -rp "$(printf "${YELLOW}›${R} ") " idx
     local tag="${eligible[$((idx-1))]}"
     confirm "Удалить все fallbacks у '${tag}'?" && {
@@ -975,7 +975,7 @@ balancer_del() {
     local bals; bals=$(jq -r '.routing.balancers[]?.tag' "$XRAY_CONF" 2>/dev/null)
     [[ -z "$bals" ]] && { box_row "  ${DIM}Нет балансировщиков${R}"; box_end; pause; return; }
     local i=1; local -a btags=()
-    while IFS= read -r t; do mi "$i" "⚖️ " "$t"; btags+=("$t"); ((i++)); done <<< "$bals"
+    while IFS= read -r t; do mi "$i" "⚖️ " "$t"; btags+=("$t"); ((i++)) || true; done <<< "$bals"
     box_end; read -rp "$(printf "${YELLOW}›${R} ") " idx
     local sel_tag="${btags[$((idx-1))]}"
     confirm "Удалить балансировщик '${sel_tag}'?" && {
