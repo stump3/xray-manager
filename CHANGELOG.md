@@ -1,207 +1,236 @@
 # Changelog
 
-Все значительные изменения задокументированы здесь.  
-Формат: [Keep a Changelog](https://keepachangelog.com/ru/), версионирование по датам.
+> Все значимые изменения документируются здесь.  
+> Формат: [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/)
 
 ---
 
-## [2.8.1] — 2026-04-03
+## [2.8.3] — 2026-04-03
 
 ### 🔴 Исправлено (критичные)
 
-**`modules/99-main.sh` — меню не отображалось при наличии хотя бы одного протокола (`((pc++))` + `set -e`)**  
-В цикле отображения протоколов в `main_menu()` использовался `((pc++))`. Под `set -euo pipefail` арифметическое выражение `((expr))` возвращает exit code 1 если результат равен нулю — при `pc=0` на первой итерации `((pc++))` вычисляет значение до инкремента (0) → exit code 1 → `set -e` немедленно завершает процесс. Пользователь видел шапку и список протоколов, но не видел пунктов меню 1–4. Исправлено: `(( pc++ )) || true` во всех 27 местах по всему проекту.
+**Nginx stream: нет скорости в REALITY через stream-режим** (`scripts/install.sh`)
 
-**`modules/08-protocols.sh` — в nginx stream-режиме порт REALITY тихо подменялся после ввода**  
-`proto_vless_tcp_reality()` спрашивала порт с дефолтом `[18443]`, но любое отличное значение молча перезаписывалось на `$_stream_port` с выводом warn. Поведение нарушало ожидания («ввёл одно — применилось другое»). Исправлено: в stream-режиме порт не запрашивается — фиксируется автоматически с выводом `info`.
+Три бага в генерируемом `/etc/nginx/stream.d/stream-443.conf`:
 
-**`modules/08-protocols.sh` — `cert_check` выполнялся после записи ключей через `kset`**  
-В `proto_vless_splithttp_tls` и шести TLS-протоколах (`vless-ws`, `vless-grpc`, `vless-httpupgrade`, `vmess-ws`, `vmess-tcp`, `trojan`) при отсутствии сертификата ключи уже записывались в `.keys.*`, inbound не добавлялся — конфигурация становилась мусорной. `cert_check` перенесён до первого `kset` во всех затронутых функциях.
+1. **`default nginx_https`** — REALITY-трафик (SNI = `github.com`) попадал в nginx HTTPS вместо Xray. Клиент получал HTML-ответ вместо VPN-туннеля. Исправлено: `default xray_local`.
 
-**`modules/14-telemt.sh` — однократная проверка порта MTProto позволяла пройти на занятый порт**  
-Проверка занятости порта была без цикла: пользователь мог повторно ввести занятый порт и установка продолжалась. Заменена на цикл `while`.
+2. **`proxy_protocol on`** — nginx отправлял Proxy Protocol заголовок в Xray, который настроен с `"xver": 0` и не принимает его. Соединение обрывалось на уровне протокола. Убрано.
 
-**`modules/04-xray-core.sh` — `_init_config` не пересоздавала конфиг без `stats`/`api`/`policy`**  
-Если `config.json` существовал, но был создан `install-release.sh` без нужных блоков, функция выходила по `[[ -f ]]`. Теперь валидирует содержимое через `jq` и пересоздаёт с резервной копией при несоответствии.
+3. **Отсутствовал `upstream xray_local`** — map ссылался на несуществующий upstream. Добавлено:
+   ```nginx
+   upstream xray_local { server 127.0.0.1:${XRAY_LOCAL_PORT}; }
+   ```
 
-### 🟡 Улучшено (UX)
-
-**`modules/08-protocols.sh` — подсказка с nginx `location`-блоком после добавления WS/gRPC/HTTPUpgrade**  
-После успешного добавления VLESS+WS, VLESS+gRPC, VLESS+HTTPUpgrade показывается готовый `proxy_pass` / `grpc_pass` блок для nginx. Отображается только при наличии `/root/.xray-mgr-install`.
-
----
-
-## [2.7.4] — 2026-03-30
-
-### 🔴 Исправлено (критичные)
-
-**`modules/02-ui.sh` — `mi()` формула `pad` давала строки на 1 символ короче ширины терминала**  
-Константа `8` в формуле `pad = i - used - 1` (где `i = w-2`) соответствует подсчёту fixed-символов в no-badge строке как `8`, но реальный подсчёт даёт `7`. В результате `pad` был на 1 меньше нужного → правая рамка `│` не замыкала бокс. Дополнительно: badge-строка имеет ` │` в конце (1 лишний пробел) — для неё нужна другая константа. Исправлено: два отдельных `pad` для `badge`/`no-badge` ветки, вычисленных из первых принципов: `pad = w - base - 1` (no-badge) и `pad = w - base - 2 - ${#raw_badge}` (badge), где `base = 7 + ${#n} + vis_ic + vis_lb`.
-
-**`modules/02-ui.sh` — `visible_width()` не считала 2-wide для `🛠 🗺 🗑 ⚙️ ⚖️` и подобных**  
-Символы из блоков `Misc Symbols` (U+2600–U+26FF) и `Dingbats` (U+2700–U+27BF) помечены в `unicodedata.east_asian_width` как `N` (narrow) или `A` (ambiguous), хотя современные терминалы рендерят их как 2-wide emoji. Variation Selector U+FE0F не был пропущен и учитывался как 1 колонка. Итог: строки с `⚙️ ` (Управление) и `🛡️ ` (Fallbacks) выходили шире остальных, разрушая рамку. Исправлено: добавлены три дополнительных правила в python3-детектор: `0x1F000–0x1FFFF` (SMP emoji), `So + 0x2600–0x27FF` (Misc/Dingbats), пропуск `U+FE0F`.
-
-### 🟡 Исправлено
-
-**`modules/00-header.sh` — версия `v2.7.1` не совпадала с `01-constants.sh` (`2.7.2`)**  
-При сборке модулей в бинарник шапка содержала старую версию. Исправлено синхронно с `01-constants.sh`.
-
----
-
-## [2.7.3] — 2026-03-30
-
-### 🔴 Исправлено (критичные)
-
-**`install.sh` — `local` за пределами функции → сбой на шаге 4**  
-При выборе SNI-режима (`USE_STREAM=true`) переменная `XRAY_LOCAL_PORT` объявлялась с ключевым словом `local` на верхнем уровне скрипта, вне какой-либо функции. В bash `local` вне функции — синтаксическая ошибка: `local: can only be used in a function`. Скрипт падал после шага TLS-сертификата, не дойдя до установки Xray. Исправлено: убрано `local`, переменная остаётся глобальной в рамках скрипта.
-
-**`install.sh` — `conflicting server name` + `emerg` при переустановке**  
-При повторном запуске `install.sh` старый `vpn.conf` оставался в `/etc/nginx/sites-enabled/`. Временный `acme-temp.conf` добавлял второй `server_name` на том же порту 80 → nginx выдавал `[warn] conflicting server name` и `[emerg] could not build server_names_hash`. Команда `nginx -t -q` возвращала ненулевой код → скрипт прерывался, не дойдя до certbot. Исправлено: старый `vpn.conf` убирается из `sites-enabled` до первого `nginx -t`.
-
-**`nginx.conf` — `could not build server_names_hash_bucket_size: 32`**  
-Дефолтный `server_names_hash_bucket_size` в nginx равен 32 байта. Домены длиннее ~20 символов (например `sub.graycloudx.mooo.com`) не влезают → nginx отказывался стартовать с `[emerg] could not build server_names_hash`. Исправлено: добавлено `server_names_hash_bucket_size 64` в блок `http {}`.
-
-### 🟡 Исправлено
-
-**`vpn.conf` — `[warn] ssl_stapling ignored` при отсутствии OCSP URL в сертификате**  
-Let's Encrypt через certbot включает OCSP URL в `fullchain.pem`, но некоторые конфигурации (acme.sh без флага, промежуточные CA) — нет. Nginx видел `ssl_stapling on` без OCSP-адреса и писал предупреждение при каждом старте. Исправлено: `install.sh` проверяет наличие OCSP URL через `openssl x509` и автоматически выставляет `ssl_stapling off` если URL отсутствует.
-
----
-
-## [2.7.1] — 2026-03-30
-
-### 🔴 Исправлено (критичные)
-
-**`n: unbound variable` — крэш при открытии главного меню**  
-В строке маршрутизации использовались `${#n}` и `${#ic}` — переменные локальные для `mi()`, недоступные в `main_menu`. При `set -u` → немедленный выход с ошибкой. Исправлено: строка маршрутизации переведена на `mi()` как и остальные пункты меню.
-
-**`install.sh` — `sed: can't read //nginx/sites/vpn.conf`**  
-При запуске через `curl | bash` значение `BASH_SOURCE[0]` равно `/dev/stdin`. `dirname("/dev/stdin") = "/dev"`, `REPO_DIR = dirname("/dev") = "/"`, `VHOST_SRC = "//nginx/sites/vpn.conf"`. Исправлено: функция `_detect_repo_dir()` с четырьмя способами обнаружения репозитория по убыванию приоритета.
-
-**`visible_width()` — хардкодный список эмодзи**  
-Функция перечисляла конкретные символы `[🔧🌐👥⚙️🛠📡🚀🗺]` через grep. При добавлении нового эмодзи в меню ширина считалась неверно. Исправлено: `python3 unicodedata.east_asian_width` — корректно определяет широкие символы (`W`/`F` = 2 колонки) для любых Unicode.
-
-**`do_remove_all()` — неверный путь stream.d**  
-Удалялся `conf.d/stream.d/*.conf` вместо `/etc/nginx/stream.d/stream-443.conf`. Исправлено.
-
-### 🟡 Исправлено (UI)
-
-**Выравнивание ASCII-арта** — строки баннера использовали `$((i-3))` вместо `$((i-2))`, правая граница рамки сдвигалась на 1 символ влево.
-
-**Строки статуса с кириллицей** — `printf %-*s` считает байты, а не символы. Слова `остановлен`, `работает` содержат 2-байтовые UTF-8 символы → правая граница уезжала. Исправлено: все строки статуса переведены на `box_row()`, который использует `${#raw}` (bash считает символы).
-
----
-
-## [2.7.0] — 2026-03-30
-
-### 🔴 Исправлено (критичные)
-
-**`cfgw()` — права на конфиг сбрасываются при каждом изменении**  
-Xray запускается от `nobody:nogroup`. До исправления `cfgw()` писал файл с правами `root:root 600` → Xray падал с `permission denied` после любого изменения конфига через меню. Добавлен `chown nobody:nogroup` + `chmod 640` внутри `cfgw()`.
-
-**`do_remove_all()` — неполная очистка**  
-После удаления оставались: nginx-конфиги, `/root/.xray-mgr-install`, systemd-таймеры `xray-limits.*`. Добавлена полная очистка всех артефактов.
-
-**`_init_config()` — игнорировала минимальный конфиг от install-release.sh**  
-Официальный установщик XTLS создаёт `config.json` без `stats/api/policy`. `_init_config()` видела файл и выходила, не добавляя нужные блоки. Xray падал при добавлении первого протокола (routing rule ссылался на несуществующий тег `api`). Исправлено: функция проверяет наличие всех трёх блоков через `jq`.
-
-**`HandlerService` отсутствовал в `api.services`**  
-`xray api adu` / `xray api rmu` требуют `HandlerService`. Без него горячее добавление/удаление пользователей (главная фича) молча падало в fallback `xray_restart`. Добавлено в `_init_config()` и `_enable_stats_api()`.
-
-**Статистика трафика всегда возвращала 0**  
-Разделитель `>>>>` вместо `>>>` в паттерне `statsquery`. Паттерн никогда не совпадал → лимиты по трафику не срабатывали.
-
-### 🟡 Исправлено (UI)
-
-**`nginx stream {}` — `unknown directive "stream"`**  
-`stream {}` записывался в `conf.d/`, который включается внутри `http {}`. Директива должна быть на корневом уровне. Исправлено: файл пишется в `stream.d/`, `nginx.conf` включает его вне `http {}`.
-
-**Ссылка VLESS+WS использовала хардкодный порт `:443`**  
-Независимо от выбранного пользователем порта, в URI всегда вписывалось `:443`.
-
-**Fallback не добавлял `http/1.1` в ALPN**  
-Документация Xray требует `alpn: [http/1.1]` когда у inbound есть fallbacks. Теперь добавляется автоматически при `fallback_add`.
+**Переименование upstream:** `xray_reality` → `xray_local` для точности (Xray не занимается REALITY-хендшейком на уровне nginx; nginx лишь проксирует TCP на localhost).
 
 ### ✨ Новое
 
-**Два новых протокола**: VLESS + gRPC + REALITY, VLESS + SplitHTTP + TLS/H3.
+**`ext_port` в `.keys.<tag>`** (`modules/07-links.sh`, `modules/08-protocols.sh`)
 
-**`spx` в REALITY-ссылках** — уникальный путь на пользователя `/sha256(email)[0:8]` вместо фиксированного `/`.
+В stream-режиме при добавлении REALITY-протокола сохраняется `ext_port: 443`. `gen_link()` читает его и подставляет в URI-ссылку вместо внутреннего порта (18443). Клиент получает корректный адрес подключения `:443`.
 
-**`routeOnly: true` в sniffing** — роутинг по доменному имени без перезаписи адреса назначения.
+**`_link_name()` в `07-links.sh`**
 
-**Ротация бэкапов** — хранятся последние 7, старые удаляются автоматически.
+Отображаемое имя в URI-фрагменте (`#name`): для первого пользователя (`email=main`) показывает тег протокола (`vless-de`), для остальных — `tag@email` (`vless-de@alice`).
 
-**Path traversal защита в `do_restore()`** — проверка путей архива перед извлечением.
+**Сводная таблица портов при USE_STREAM=true в summary** (`scripts/install.sh`)
 
-**Валидация логина пользователя** — regex `^[a-zA-Z0-9._@-]+$` вместо проверки только пробела.
-
-**`trap _cleanup EXIT`** — все `mktemp`-файлы регистрируются в `_TMPFILES` и удаляются при выходе.
-
-**Батч-запрос `statsquery`** в `check_limits` — один вызов вместо N×2 на каждого пользователя.
-
-**Кеш `server_ip()`** — `_CACHED_SERVER_IP` устанавливается один раз до цикла генерации подписки.
-
-### 🏗️ Архитектура
-
-**Модульная структура** — монолит `xray-manager.sh` разбит на 18 модулей (`modules/00-header.sh` … `99-main.sh`). `install.sh` собирает бинарник командой `cat modules/*.sh` на этапе установки.
+До подтверждения [Y/n] показывается реальный порт Xray:
+```
+REALITY порт: 443 (stream → Xray inbound: 18443)
+```
 
 ---
 
-## [2.6.0] — 2026-03-29
+## [2.6.0] — 2026-03-26
 
-### ✨ Новое
+### 🏗 Архитектура — модульная сборка
 
-- Nginx stream SNI-маршрутизация (REALITY + HTTPS на одном порту 443)
-- Автоматическое определение конфликта порта 443 при установке
-- Hysteria2 нативный inbound в Xray (без отдельного бинарника)
-- Hysteria2 отдельный бинарник с ACME (LE/ZeroSSL/Buypass), port hopping
-- Port hopping для Hysteria2 через `hysteriaSettings.udphop`
-- Объединённая подписка: Python merger + sub-injector на Rust/Axum
-- Балансировщик нагрузки + Observatory
-- Fragment + Noises для Freedom outbound
-- Fallbacks (защита от зондирования)
-- Метрики endpoint (`/debug/vars`, `/debug/pprof`)
-- SSH-миграция для telemt и Hysteria2
+Скрипт разбит на 18 модулей. Дистрибуция по-прежнему одним файлом: сборка через `make build` → `cat modules/*.sh > xray-manager.sh`. Никаких `source` в рантайме — trap, `_TMPFILES`, `set -euo pipefail` работают без изменений.
+
+```
+modules/
+├── 00-header.sh        13   shebang, trap, _TMPFILES
+├── 01-constants.sh     32   версия, пути, цвета
+├── 02-ui.sh           109   box_*, ask, spin, ok/err/warn
+├── 03-system.sh        71   need_root, deps, BBR
+├── 04-xray-core.sh    104   установка ядра
+├── 05-config.sh        67   cfg/cfgw, ib_*, kset/kget, gRPC API
+├── 06-limits.sh       141   лимиты, check_limits, systemd timer
+├── 07-links.sh        182   gen_link, urlencode, pick_inbound
+├── 08-protocols.sh   1091   все proto_*
+├── 09-users.sh        544   menu_protocols, user_*
+├── 10-manage.sh        71   menu_manage, geodata
+├── 11-subscription.sh 674   subscription server
+├── 12-system.sh       126   backup/restore/remove
+├── 13-compat.sh        58   SSH helpers, compat aliases
+├── 14-telemt.sh       622   MTProto
+├── 15-hysteria2.sh    541   Hysteria2 standalone
+├── 16-routing.sh      834   routing + profiles
+└── 99-main.sh         100   main_menu, entrypoint
+```
+
+**Makefile:** `make build` — сборка + `bash -n`, `make check` — shellcheck, `make release` — +sha256, `make ls` — таблица модулей.
+
+### ➕ Новые протоколы (из официальных Xray-examples)
+
+**VLESS + gRPC + REALITY** (`proto_vless_grpc_reality`) — gRPC поверх REALITY без домена и TLS-сертификата. Генерирует x25519 + shortId. `flow` пустой (Vision несовместим с gRPC). Пункт **12** в меню протоколов.
+
+**VLESS + SplitHTTP + TLS/H3** (`proto_vless_splithttp_tls`) — транспорт `splithttp` поверх QUIC. Два режима ALPN: `h3` (прямое подключение) и `h2,http/1.1` (через CDN). Требует домен и TLS-сертификат. Пункт **13** в меню протоколов.
+
+Оба протокола добавлены в `gen_link`:
+- `vless:grpc_reality` → `vless://...?security=reality&type=grpc&serviceName=...`
+- `vless:splithttp` → `vless://...?security=tls&type=splithttp&path=...`
+
+### 🔒 Безопасность и корректность (из Xray-examples)
+
+- **`dest` → `target` в `proto_vless_tcp_reality`** — поле `realitySettings.dest` переименовано в `target` начиная с Xray 24.10.31. Старое поле не обрабатывается — Xray не запускался. TCP был единственным незафиксированным местом (XHTTP был исправлен в 2.0.0).
+- **`sniffing.routeOnly: true`** во всех REALITY-inbound — sniffing применяется только для маршрутизации, не переопределяет реальный адрес назначения. Корректная семантика для REALITY, где `target` — камуфляжный хост.
+- **`sniffing.destOverride` + `"quic"`** в `proto_vless_tcp_reality` — добавлен пропущенный тип; все примеры Xray-examples используют `["http","tls","quic"]`.
+
+### ⚡ Улучшения
+
+- **`spiderX` в `gen_link`** для TCP+REALITY, XHTTP+REALITY и gRPC+REALITY — детерминированный `/hex8` от sha256(email). Уникален для каждого пользователя, не меняется между вызовами. Официально рекомендован для улучшения маскировки.
+- **`kset()` — устранена гонка состояний** — заменён хардкод `/tmp/_k` на `mktemp` + регистрацию в `_TMPFILES`. Параллельные вызовы `kset` (например, при добавлении нескольких пользователей быстро) больше не конфликтуют.
+
+---
+
+## [2.5.1] — 2026-03-25
+
+> Мерж v5 (база) + точечные улучшения из v6 и синтез.
+
+### 🔒 Безопасность
+
+- **`do_restore()` — расширен whitelist path traversal** — добавлены паттерны `^\./usr/local/etc/xray/` и `^\./var/log/xray/`, `^\.$`, `^\./$`. Архивы, созданные через `tar -czf ... -C / ./usr/...`, содержат `./`-префикс — без этих паттернов они ложно срабатывали как подозрительные.
+- **`do_restore()` — диагностический вывод** — подозрительные пути выводятся через `box_row` (до 5 строк) вместо одной строки `info`.
+
+### ⚡ Производительность
+
+- **`gen_link()` — тройной fallback IP** — `$3` (явный) → `_CACHED_SERVER_IP` (env) → `server_ip()`. Обратно совместим.
+- **`_sub_links_for_email()` — локальный кеш IP** — `sip` вычисляется один раз до цикла, передаётся как `$3`. При вызове из `_sub_all_links` HTTP-запрос не выполняется совсем.
+
+### 🔧 Исправления
+
+- **`cfgw()` — регистрация в `_TMPFILES`** — последний `mktemp` без регистрации.
+- **`do_backup()` — информативная ротация** — выводится `info "Удалено старых бэкапов: N"` + `info "Всего: N"`.
+
+---
+
+## [2.5.0] — 2026-03-25
+
+### 🔒 Безопасность
+
+- **Защита от path traversal в `do_restore()`** — перед распаковкой архива проверяются все пути через `tar -tz`. Закрывает класс атак через специально сформированный `.tar.gz`.
+- **Улучшена валидация имени пользователя** — разрешены только `a-zA-Z0-9._@-`. Предотвращает инъекцию спецсимволов в URI и имена файлов.
+
+### ⚡ Производительность
+
+- **`check_limits` — один батч-запрос вместо N×2 форков** — при 50 пользователях снижает количество форков с 100 до 1 на каждый цикл таймера.
+- **`server_ip()` кешируется до цикла генерации ссылок** — через `export _CACHED_SERVER_IP` в `_sub_all_links()`.
+
+### 🔧 Исправления
+
+- **Переобъявление цветовых переменных в compat-секции** — блок с одинарными кавычками переопределял цвета. Весь UI блока Hysteria2 (~1500 строк) получал невалидный вывод.
+- **Ротация бэкапов** — `do_backup()` хранит последние 7 архивов.
+- **`trap _cleanup EXIT`** — все `mktemp` регистрируются в `_TMPFILES[]`.
 
 ---
 
 ## [2.4.0] — 2026-03-24
 
-### ✨ Новое
+### ➕ Подписка — расширенные настройки
 
-- Горячее добавление/удаление пользователей через gRPC API (`xray api adu/rmu`) — без разрыва соединений
-- Сервер подписки с настраиваемым интервалом обновления (1–168 ч)
-- Автообновление файлов подписки при добавлении пользователя
+- `sub_set_interval()` — интервал 1–168 ч, без перезапуска
+- `sub_toggle_autoupdate()` — автопересоздание файлов при `user_add`
+- Пункты **6) ⏱ Интервал** и **7) 🔁 Автообновление** в меню подписки
+
+### 🔧 Горячее добавление/удаление пользователей
+
+- `xray_api_add_user()` / `xray_api_del_user()` — через `xray api adu/rmu` на `127.0.0.1:10085`
+- Fallback на `restart` только если Xray не активен
+
+### 🏗 Структура репозитория
+
+- `nginx/`, `configs/xray/`, `scripts/install.sh`, `scripts/certbot-deploy-hook.sh`, `docs/setup.md`
+
+---
+
+## [2.3.0] — 2026-03-22
+
+### ➕ Расширенные функции (меню 5)
+
+- **Fragment + Noises** — фрагментация TLS ClientHello, UDP-шум
+- **Fallbacks** — интерактивное управление, `fallback_add/show/clear`
+- **Hysteria2 Outbound** — relay/цепочка VPS1 → VPS2
+- **Балансировщик + Observatory** — `random/roundRobin/leastPing/leastLoad`
+- **Metrics endpoint** — `/debug/vars` + `/debug/pprof/`
 
 ---
 
 ## [2.2.0] — 2026-03-22
 
-### ✨ Новое
+### ➕ Hysteria2 нативный Xray — новый протокол
 
-- Hysteria2 нативный Xray inbound (`protocol: hysteria`, `network: hysteria`)
-- `ib_emails()` — универсальный хелпер для `settings.clients` и `settings.users`
+- `proto_hysteria_xray()` — `protocol: hysteria`, `network: hysteria`, `settings.users`
+- Port Hopping через `hysteriaSettings.udphop`
+- Полная интеграция со Stats API и `.limits.json`
+
+### 🔧 Рефакторинг
+
+- `ib_emails()` — унифицированный хелпер для `.clients` и `.users`
+- `_remove_user_from_tag()` — очищает оба поля
+
+---
+
+## [2.1.0] — 2026-03-22
+
+### 📡 MTProto (telemt)
+
+- systemd и Docker режимы, REST API без перезапуска, SSH-миграция
+
+### 🚀 Hysteria2 (отдельный бинарник)
+
+- ACME (LE/ZeroSSL/Buypass), Port Hopping, Masquerade, SSH-миграция
 
 ---
 
 ## [2.0.0] — 2026-03-22
 
-### ✨ Новое
+### ➕ Протоколы, лимиты, Stats API
 
-- VLESS gRPC + TLS, VLESS HTTPUpgrade + TLS, VMess WebSocket/TCP + TLS, Shadowsocks 2022
-- Лимиты пользователей по дате и трафику (`.limits.json` + systemd timer)
-- Stats API интеграция (`xray api statsquery`)
+| Протокол | Транспорт | Особенность |
+|---|---|---|
+| VLESS | gRPC + TLS | HTTP/2, `grpc_pass` |
+| VLESS | HTTPUpgrade + TLS | Без ALPN fingerprint |
+| VMess | WebSocket + TLS | `vmess://base64(JSON)` |
+| VMess | TCP + TLS | Простейшая конфигурация |
+| Shadowsocks | TCP | `2022-blake3-aes-256-gcm`, multi-user |
 
-### 🔴 Исправлено
+### 🐛 Исправлено
 
-- `pbk` читался из `/Password/` вместо `/PublicKey/` — ссылки не работали
-- Временные файлы создавались в `$PWD` вместо `/tmp`
-- XHTTP требует `target` в `realitySettings`, а не `dest`
-- XHTTP несовместим с `flow: xtls-rprx-vision`
+| Баг | Влияние |
+|---|---|
+| `pbk` читался из `/Password/` вместо `/PublicKey/` | **Критический** |
+| XHTTP: `dest` вместо `target` в `realitySettings` | Xray не запускался |
+| XHTTP `flow` должен быть `""` | Ошибка подключения |
 
 ---
 
 ## [1.0.0] — 2026-03-01
 
-Первый релиз. Xray-core через официальный установщик, протоколы REALITY/WebSocket/Trojan, базовое управление пользователями, QR-коды, бэкап.
+### 🎉 Первый релиз
+
+VLESS+TCP+REALITY, VLESS+XHTTP+REALITY, VLESS+WebSocket+TLS, Trojan+TCP+TLS. Пользователи, QR-коды, бэкап, псевдографика.
+
+---
+
+## Запланировано
+
+- [ ] Xray: ежемесячный сброс счётчика трафика (subscription-модель 30 GB/мес)
+- [ ] Xray: формат подписки sing-box JSON (`/{token}/singbox`)
+- [ ] Xray: массовый импорт пользователей из CSV
+- [ ] Xray: TLS-сертификат через certbot/acme.sh
+- [ ] Уведомления в Telegram при истечении лимитов
+- [ ] IPv6-поддержка в генерации ссылок
+- [ ] REALITY «без кражи трафика» — dokodemo-door защита от CF-сканеров
