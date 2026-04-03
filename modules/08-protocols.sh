@@ -144,10 +144,15 @@ proto_vless_ws_tls() {
             "wsSettings":{"path":$path}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
     ib_add "$ib"; xray_restart
-    _nginx_patch_location "ws" "$dom" "$port" "$path_v"
     cls; box_top " ✅  VLESS + WS + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  Домен: ${WHITE}${dom}${R}"
     box_row "  Path: ${WHITE}${path_v}${R}"
+    if [[ -f /root/.xray-mgr-install ]]; then
+        box_blank
+        box_row "  ${YELLOW}Если нужен проброс через nginx (порт 443):${R}"
+        box_row "  ${DIM}location ${path_v} { proxy_pass http://127.0.0.1:${port}; ... }${R}"
+        box_row "  ${DIM}Добавь в /etc/nginx/sites-available/vpn.conf вручную${R}"
+    fi
     box_blank; box_end
     show_link_qr "$tag" "main"
 }
@@ -188,13 +193,18 @@ proto_vless_grpc_tls() {
             "grpcSettings":{"serviceName":$svc,"multiMode":false}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
     ib_add "$ib"; xray_restart
-    _nginx_patch_location "grpc" "$dom" "$port" "$svc"
     cls; box_top " ✅  VLESS + gRPC + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}"
     box_row "  Домен: ${WHITE}${dom}${R}  ServiceName: ${CYAN}${svc}${R}"
     box_blank
     box_row "  ${YELLOW}Nginx (grpc_pass):${R}"
     box_row "  ${DIM}grpc_pass grpc://127.0.0.1:${port};${R}"
+    if [[ -f /root/.xray-mgr-install ]]; then
+        box_blank
+        box_row "  ${YELLOW}Если нужен проброс через nginx (порт 443):${R}"
+        box_row "  ${DIM}location /${svc} { grpc_pass grpc://127.0.0.1:${port}; }${R}"
+        box_row "  ${DIM}Добавь в /etc/nginx/sites-available/vpn.conf вручную${R}"
+    fi
     box_blank; box_end
     show_link_qr "$tag" "main"
 }
@@ -236,9 +246,14 @@ proto_vless_httpupgrade_tls() {
             "httpupgradeSettings":{"path":$path,"host":$sni}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
     ib_add "$ib"; xray_restart
-    _nginx_patch_location "httpupgrade" "$dom" "$port" "$path_v"
     cls; box_top " ✅  VLESS + HTTPUpgrade + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  Path: ${WHITE}${path_v}${R}"
+    if [[ -f /root/.xray-mgr-install ]]; then
+        box_blank
+        box_row "  ${YELLOW}Если нужен проброс через nginx (порт 443):${R}"
+        box_row "  ${DIM}location ${path_v} { proxy_pass http://127.0.0.1:${port}; ... }${R}"
+        box_row "  ${DIM}Добавь в /etc/nginx/sites-available/vpn.conf вручную${R}"
+    fi
     box_blank; box_end
     show_link_qr "$tag" "main"
 }
@@ -398,79 +413,6 @@ proto_shadowsocks() {
     box_row "  Пользов. пароль:  ${DIM}${up}${R}"
     box_blank; box_end
     show_link_qr "$tag" "main"
-}
-
-# ──────────────────────────────────────────────────────────────────────────────
-#  NGINX: auto-patch vhost после добавления WS / gRPC / HTTPUpgrade
-# ──────────────────────────────────────────────────────────────────────────────
-
-_nginx_patch_location() {
-    local proto="$1" dom="$2" port="$3" path_v="$4"
-    # proto: ws | grpc | httpupgrade
-
-    local vhost="/etc/nginx/sites-available/vpn.conf"
-    local state="/root/.xray-mgr-install"
-
-    # Нет vhost — nginx не наш, не трогаем
-    [[ -f "$vhost" ]] || return 0
-
-    # Читаем параметры установки
-    local inst_domain=""
-    [[ -f "$state" ]] && inst_domain=$(grep -oP '^DOMAIN="\K[^"]+' "$state" 2>/dev/null || true)
-
-    # Домен добавляемого протокола не совпадает с установленным — не трогаем
-    [[ "$dom" != "$inst_domain" ]] && return 0
-
-    # Для gRPC location — это ServiceName, для WS/HTTPUpgrade — path
-    local loc_path="$path_v"
-    [[ "$proto" == "grpc" ]] && loc_path="/${path_v}"
-    # Убираем двойной слэш если path_v уже с /
-    loc_path="${loc_path//\/\//\/}"
-
-    # Уже есть такой location?
-    if grep -qF "location ${loc_path}" "$vhost" 2>/dev/null; then
-        warn "nginx: location ${loc_path} уже есть в vhost — пропускаем"
-        return 0
-    fi
-
-    local block
-    case "$proto" in
-        ws|httpupgrade)
-            block="\n    # xray-manager: ${proto} (auto)\n    location ${loc_path} {\n        proxy_pass         http://127.0.0.1:${port};\n        proxy_http_version 1.1;\n        proxy_set_header   Upgrade    \$http_upgrade;\n        proxy_set_header   Connection \"upgrade\";\n        proxy_set_header   Host       \$host;\n        proxy_read_timeout 86400s;\n    }"
-            ;;
-        grpc)
-            block="\n    # xray-manager: grpc (auto)\n    location ${loc_path} {\n        grpc_pass      grpc://127.0.0.1:${port};\n        grpc_read_timeout 300s;\n    }"
-            ;;
-        *) return 0 ;;
-    esac
-
-    # Backup vhost
-    local bak="${vhost}.bak.$(date +%s)"
-    cp "$vhost" "$bak"
-
-    # Вставить block перед последним } в файле
-    local tmp; tmp=$(mktemp); _TMPFILES+=("$tmp")
-    awk -v blk="$block" '
-        { lines[NR] = $0 }
-        END {
-            last = NR
-            for (i = NR; i >= 1; i--) {
-                if (lines[i] ~ /^}[[:space:]]*$/) { last = i; break }
-            }
-            for (i = 1; i < last; i++) print lines[i]
-            printf "%s\n", blk
-            for (i = last; i <= NR; i++) print lines[i]
-        }
-    ' "$vhost" > "$tmp" && mv "$tmp" "$vhost"
-
-    if nginx -t -q 2>/dev/null; then
-        systemctl reload nginx 2>/dev/null \
-            && ok "nginx: location ${loc_path} → :${port} добавлен и применён" \
-            || warn "nginx reload не удался — проверь: systemctl status nginx"
-    else
-        warn "nginx -t провалился — откат vhost"
-        mv "$bak" "$vhost"
-    fi
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1202,4 +1144,3 @@ proto_vless_splithttp_tls() {
     box_blank; box_end
     show_link_qr "$tag" "main"
 }
-
