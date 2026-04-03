@@ -16,6 +16,9 @@ gen_link() {
         uuid=$(jq -r --arg t "$tag" --arg e "$email" \
             '.inbounds[]|select(.tag==$t)|.settings.clients[]|select(.email==$e)|.id' "$XRAY_CONF")
         sni=$(kget "$tag" "sni"); pbk=$(kget "$tag" "publicKey"); sid=$(kget "$tag" "shortId")
+        # stream-режим: клиент коннектится на внешний порт (443), не на внутренний (18443)
+        local ext_port; ext_port=$(kget "$tag" "ext_port" 2>/dev/null || true)
+        [[ -n "$ext_port" ]] && port="$ext_port"
         local spx; spx="/$(printf '%s' "${email}" | sha256sum | head -c8)"
         echo "vless://${uuid}@${sip}:${port}?security=reality&sni=${sni}&fp=firefox&pbk=${pbk}&sid=${sid}&spx=$(urlencode "${spx}")&type=tcp&flow=xtls-rprx-vision&encryption=none#${email}"
         ;;
@@ -179,4 +182,3 @@ pick_inbound() {
     IFS='|' read -r t _ _ _ _ <<< "${tags[$((idx-1))]}"
     printf -v "$__var" '%s' "$t"; return 0
 }
-
