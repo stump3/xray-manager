@@ -40,7 +40,7 @@ main_menu() {
         while IFS='|' read -r tag port proto net sec; do
             local uc; uc=$(ib_users_count "$tag")
             box_row "  • ${CYAN}${tag}${R}  ${DIM}порт ${port}${R}  ${YELLOW}${uc} польз.${R}"
-            ((pc++))
+            ((pc++)) || true
         done < <(ib_list)
         [[ $pc -eq 0 ]] && box_row "  ${DIM}Xray-протоколы не настроены${R}"
 
