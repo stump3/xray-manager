@@ -28,6 +28,8 @@ proto_vless_tcp_reality() {
     kset "$tag" privateKey "$priv"; kset "$tag" publicKey "$pub"
     kset "$tag" shortId "$sid"; kset "$tag" sni "$sni"
     kset "$tag" port "$port"; kset "$tag" type "vless-reality"
+    # stream-режим: внешний порт 443, клиент подключается через nginx stream
+    [[ -n "$_stream_port" ]] && kset "$tag" ext_port "443"
     local ib; ib=$(jq -n \
         --arg tag "$tag" --argjson port "$port" --arg uuid "$uuid" \
         --arg priv "$priv" --arg sni "$sni" --arg sid "$sid" \
@@ -56,13 +58,18 @@ proto_vless_xhttp_reality() {
     box_blank
     xray_ok || { box_row "  ${RED}Установите ядро Xray!${R}"; box_end; pause; return; }
     local port sni path_v tag mode_v
-    ask "Порт" port "443"
+    local _stream_port=""
+    [[ -f /root/.xray-reality-local-port ]] && _stream_port=$(cat /root/.xray-reality-local-port)
+    [[ -n "$_stream_port" ]] && {
+        box_row "  ${YELLOW}ℹ Nginx stream — Xray слушает на 127.0.0.1:${_stream_port}${R}"; box_blank; }
+    ask "Порт" port "${_stream_port:-443}"
     ask "SNI" sni "www.microsoft.com"
     ask "Path" path_v "/"
     ask "Режим (auto/packet-up/stream-up/stream-one)" mode_v "auto"
     ask "Тег" tag "vless-xhttp"
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
     port_check "$port" || { pause; return; }
+    local _listen_addr; [[ -n "$_stream_port" ]] && _listen_addr="127.0.0.1" || _listen_addr="0.0.0.0"
     spin_start "Генерация ключей"
     local kout; kout=$("$XRAY_BIN" x25519 2>/dev/null)
     local priv; priv=$(echo "$kout" | grep -i 'private' | awk '{print $NF}')
@@ -74,11 +81,12 @@ proto_vless_xhttp_reality() {
     kset "$tag" shortId "$sid"; kset "$tag" sni "$sni"
     kset "$tag" port "$port"; kset "$tag" path "$path_v"
     kset "$tag" type "vless-xhttp"
+    [[ -n "$_stream_port" ]] && kset "$tag" ext_port "443"
     local ib; ib=$(jq -n \
         --arg tag "$tag" --argjson port "$port" --arg uuid "$uuid" \
         --arg priv "$priv" --arg sni "$sni" --arg sid "$sid" \
-        --arg path "$path_v" --arg mode "$mode_v" '{
-        "tag":$tag,"listen":"0.0.0.0","port":$port,"protocol":"vless",
+        --arg path "$path_v" --arg mode "$mode_v" --arg listen "$_listen_addr" '{
+        "tag":$tag,"listen":$listen,"port":$port,"protocol":"vless",
         "settings":{"clients":[{"email":"main","id":$uuid,"flow":""}],"decryption":"none"},
         "streamSettings":{"network":"xhttp","security":"reality",
             "xhttpSettings":{"path":$path,"mode":$mode},
@@ -1012,12 +1020,17 @@ proto_vless_grpc_reality() {
     box_blank
     xray_ok || { box_row "  ${RED}Установите ядро Xray!${R}"; box_end; pause; return; }
     local port sni svc tag
-    ask "Порт" port "443"
+    local _stream_port=""
+    [[ -f /root/.xray-reality-local-port ]] && _stream_port=$(cat /root/.xray-reality-local-port)
+    [[ -n "$_stream_port" ]] && {
+        box_row "  ${YELLOW}ℹ Nginx stream — Xray слушает на 127.0.0.1:${_stream_port}${R}"; box_blank; }
+    ask "Порт" port "${_stream_port:-443}"
     ask "SNI (камуфляжный домен)" sni "www.yahoo.com"
     ask "gRPC ServiceName" svc "grpc"
     ask "Тег" tag "vless-grpc-reality"
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
     port_check "$port" || { pause; return; }
+    local _listen_addr; [[ -n "$_stream_port" ]] && _listen_addr="127.0.0.1" || _listen_addr="0.0.0.0"
     spin_start "Генерация ключей x25519"
     local kout; kout=$("$XRAY_BIN" x25519 2>/dev/null)
     local priv; priv=$(echo "$kout" | grep -i 'private' | awk '{print $NF}')
@@ -1029,10 +1042,12 @@ proto_vless_grpc_reality() {
     kset "$tag" shortId "$sid";     kset "$tag" sni "$sni"
     kset "$tag" port "$port";       kset "$tag" serviceName "$svc"
     kset "$tag" type "vless-grpc-reality"
+    [[ -n "$_stream_port" ]] && kset "$tag" ext_port "443"
     local ib; ib=$(jq -n \
         --arg tag "$tag" --argjson port "$port" --arg uuid "$uuid" \
-        --arg priv "$priv" --arg sni "$sni" --arg sid "$sid" --arg svc "$svc" '{
-        "tag":$tag,"listen":"0.0.0.0","port":$port,"protocol":"vless",
+        --arg priv "$priv" --arg sni "$sni" --arg sid "$sid" --arg svc "$svc" \
+        --arg listen "$_listen_addr" '{
+        "tag":$tag,"listen":$listen,"port":$port,"protocol":"vless",
         "settings":{"clients":[{"email":"main","id":$uuid,"flow":""}],"decryption":"none"},
         "streamSettings":{"network":"grpc","security":"reality",
             "grpcSettings":{"serviceName":$svc,"multiMode":false},
@@ -1113,4 +1128,3 @@ proto_vless_splithttp_tls() {
     box_blank; box_end
     show_link_qr "$tag" "main"
 }
-
