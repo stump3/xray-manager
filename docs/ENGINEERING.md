@@ -269,6 +269,35 @@ gen_link() {
 
 Клиент → CDN → сервер: CDN не передаёт QUIC, только HTTP/2 или HTTP/1.1. Режим выбирается при установке протокола.
 
+### 14. Nginx stream: SNI-маршрутизация REALITY + HTTPS на порту 443
+
+Когда пользователь выбирает REALITY на порту 443, install.sh настраивает nginx stream с SNI-маршрутизацией. Это позволяет одному порту обслуживать и HTTPS-сайт, и VLESS+REALITY.
+
+**Схема трафика:**
+
+```
+TCP:443 → nginx stream (ssl_preread, TLS не терминируется)
+  ├─ SNI = домен сервера → upstream nginx_https (127.0.0.1:4443)
+  └─ SNI = всё остальное → upstream xray_local  (127.0.0.1:18443)
+```
+
+**Имена upstream в `/etc/nginx/stream.d/stream-443.conf`:**
+
+| upstream | назначение | адрес |
+|---|---|---|
+| `nginx_https` | nginx HTTPS | `127.0.0.1:${NGINX_PORT}` (4443) |
+| `xray_local` | Xray REALITY | `127.0.0.1:${XRAY_LOCAL_PORT}` (18443) |
+
+**Критические ограничения:**
+
+- `proxy_protocol` **не используется** в stream → Xray. Xray настроен с `"xver": 0` и не принимает Proxy Protocol. Если добавить `proxy_protocol on` в nginx stream server, Xray получит мусор в начале потока и оборвёт соединение.
+- `default` в map должен указывать на `xray_local`, а **не на `nginx_https`**. Иначе REALITY-клиент (SNI = `github.com`) попадает в nginx и получает HTML вместо VPN-туннеля.
+- Xray inbound должен слушать на `127.0.0.1:18443` (не `0.0.0.0:443`). Иначе конфликт с nginx stream на порту 443.
+
+**Файл состояния:** `/root/.xray-reality-local-port` — содержит внутренний порт Xray (18443). Читается `proto_vless_tcp_reality` при добавлении протокола. Если файл отсутствует — протокол запрашивает порт у пользователя.
+
+**ext_port:** при добавлении REALITY в stream-режиме в `.keys.<tag>` сохраняется `ext_port: 443`. `gen_link()` читает его и подставляет в URI вместо внутреннего порта — клиент получает ссылку с `:443`, а не `:18443`.
+
 ---
 
 ## Расширенные функции
