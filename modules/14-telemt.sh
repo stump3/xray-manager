@@ -296,7 +296,10 @@ telemt_ask_users() {
 telemt_menu_install() {
     header "Установка MTProxy (${TELEMT_MODE})"
     local port; read -rp "Порт прокси [8443]: " port; port="${port:-8443}" < /dev/tty
-    ss -tlnp 2>/dev/null | grep -q ":${port} " && { warn "Порт $port занят!"; read -rp "Другой порт: " port; } < /dev/tty
+    while ss -tlnp 2>/dev/null | grep -q ":${port} "; do
+        warn "Порт $port занят!"
+        read -rp "  Другой порт: " port < /dev/tty
+    done
     local domain; read -rp "Домен-маскировка [petrovich.ru]: " domain; domain="${domain:-petrovich.ru}" < /dev/tty
     echo ""; telemt_ask_users
     if [ "$TELEMT_MODE" = "systemd" ]; then
