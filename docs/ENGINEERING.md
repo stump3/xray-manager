@@ -464,15 +464,12 @@ masquerade:
 Порядок важен: сначала официальный uninstall-скрипт XTLS (он корректно убирает systemd-юнит `xray.service`), затем всё остальное вручную.
 
 ### 1. Xray-core — официальный uninstall
-
 ```bash
-bash -c "$(curl -4 -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ remove --purge
+bash -c "$(curl -4 -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ remove --purge || true
 ```
-
 Убирает: `/usr/local/bin/xray`, `/etc/systemd/system/xray.service`, `/usr/local/share/xray/`.
 
 ### 2. xray-manager + systemd-таймер лимитов
-
 ```bash
 systemctl disable --now xray-limits.timer xray-limits.service 2>/dev/null || true
 rm -f /usr/local/bin/xray-manager
@@ -482,38 +479,43 @@ systemctl daemon-reload
 ```
 
 ### 3. Конфиги, ключи, логи
-
 ```bash
 rm -rf /usr/local/etc/xray/
 rm -rf /var/log/xray/
 rm -rf /usr/local/share/xray/
+rm -rf /run/xray/
 rm -f /root/.xray-mgr-install
 ```
 
-### 4. Nginx
+### 4. Systemd хвосты (если остались)
+```bash
+rm -f /etc/systemd/system/xray.service
+rm -f /etc/systemd/system/xray@.service
+rm -rf /etc/systemd/system/xray.service.d
+rm -rf /etc/systemd/system/xray@.service.d
+rm -f /etc/systemd/system/multi-user.target.wants/xray.service
+systemctl daemon-reexec
+systemctl daemon-reload
+```
 
+### 5. Nginx
 ```bash
 rm -f /etc/nginx/sites-enabled/vpn.conf
 rm -f /etc/nginx/sites-available/vpn.conf
 rm -f /etc/nginx/sites-available/acme-temp.conf
 rm -f /etc/nginx/stream.d/stream-443.conf
-rm -f /etc/nginx/conf.d/stream-443.conf   # ← от старых установок, conf.d тоже чистим
-# Восстановить оригинальный nginx.conf, если был сохранён бэкап
-ls /etc/nginx/nginx.conf.bak.* 2>/dev/null && \
-  cp "$(ls -t /etc/nginx/nginx.conf.bak.* | head -1)" /etc/nginx/nginx.conf
+rm -f /etc/nginx/conf.d/stream-443.conf
+ls /etc/nginx/nginx.conf.bak.* 2>/dev/null && cp "$(ls -t /etc/nginx/nginx.conf.bak.* | head -1)" /etc/nginx/nginx.conf
 nginx -t && systemctl reload nginx
 ```
 
-### 5. Let's Encrypt
-
+### 6. Let's Encrypt
 ```bash
 rm -f /etc/letsencrypt/renewal-hooks/deploy/reload-services.sh
-# Удалить сертификат (замени домен на свой)
-certbot delete --cert-name vpn.example.com --non-interactive
+certbot delete --cert-name vpn.example.com --non-interactive 2>/dev/null || true
 ```
 
-### 6. Hysteria2 (если устанавливался)
-
+### 7. Hysteria2 (если устанавливался)
 ```bash
 systemctl disable --now hysteria-server 2>/dev/null || true
 rm -f /usr/local/bin/hysteria
@@ -522,21 +524,18 @@ rm -f /etc/systemd/system/hysteria-server.service
 systemctl daemon-reload
 ```
 
-### 7. Опционально — бэкапы и UFW
-
+### 8. Опционально — бэкапы и UFW
 ```bash
 rm -rf /root/xray-backups/
-# Убрать нестандартный порт REALITY (если менялся, например 8443)
 ufw delete allow 8443/tcp 2>/dev/null || true
-# Порты 22, 80, 443 трогать не нужно
 ```
 
 ### Финальная проверка
-
 ```bash
-which xray xray-manager 2>/dev/null || echo "OK: бинарники удалены"
+which xray xray-manager hysteria 2>/dev/null || echo "OK: бинарники удалены"
 ls /usr/local/etc/xray/ 2>/dev/null || echo "OK: конфиг-директория удалена"
 systemctl list-units --all | grep -E "xray|hysteria" || echo "OK: сервисы отсутствуют"
+ss -tulpn | grep -E "xray|18443" || echo "OK: порты чистые"
 ls /etc/nginx/sites-enabled/
 ```
 
