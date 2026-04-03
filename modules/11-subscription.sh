@@ -597,7 +597,7 @@ sub_user_links() {
     [[ ${#emails[@]} -eq 0 ]] && { box_row "  ${DIM}Нет пользователей${R}"; box_end; pause; return; }
 
     local i=1
-    for em in "${emails[@]}"; do mi "$i" "👤" "$em"; ((i++)); done
+    for em in "${emails[@]}"; do mi "$i" "👤" "$em"; (( i++ )) || true; done
     box_mid; mi "0" "◀" "Назад"; box_end
     read -rp "$(printf "${YELLOW}›${R} ") " ch
     [[ "$ch" == "0" || -z "$ch" ]] && return
@@ -615,7 +615,7 @@ sub_user_links() {
         local cnt=0
         while IFS= read -r lnk; do
             [[ -z "$lnk" ]] && continue
-            ((cnt++))
+            (( cnt++ )) || true
             # Укоротить ссылку для отображения
             local disp="${lnk:0:80}"
             [[ ${#lnk} -gt 80 ]] && disp="${disp}..."
@@ -651,7 +651,7 @@ sub_show_content() {
     local cnt=0
     while IFS= read -r lnk; do
         [[ -z "$lnk" ]] && continue
-        ((cnt++))
+        (( cnt++ )) || true
         local proto_mark
         case "$lnk" in
             vless://*) proto_mark="${CYAN}VLESS${R}" ;;

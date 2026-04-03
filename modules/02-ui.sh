@@ -137,7 +137,7 @@ spin_start() {
     ( local f=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏") i=0
       while true; do
           printf "\r${CYAN}%s${R} %s..." "${f[$((i%10))]}" "$1"
-          sleep 0.08; ((i++))
+          sleep 0.08; (( i++ )) || true
       done ) &
     _SPIN=$!
 }

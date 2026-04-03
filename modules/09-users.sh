@@ -146,7 +146,7 @@ menu_protocols() {
             local uc; uc=$(ib_users_count "$tag")
             local label_col="$CYAN"
             box_row "    • ${label_col}${tag}${R}  ${DIM}порт ${port} · ${proto}+${net}+${sec} · ${uc} польз.${R}"
-            ((cnt++))
+            (( cnt++ )) || true
         done < <(ib_list)
         [[ $cnt -eq 0 ]] && box_row "    ${DIM}(нет протоколов)${R}"
         box_blank; box_mid
@@ -204,7 +204,7 @@ menu_del_protocol() {
     for e in "${tags[@]}"; do
         IFS='|' read -r t p pr n s <<< "$e"
         mi "$i" "🔌" "${CYAN}${t}${R}" "  порт ${p} · ${pr}+${n}"
-        ((i++))
+        (( i++ )) || true
     done
     box_mid; mi "0" "◀" "Назад"; box_end
     read -rp "$(printf "${YELLOW}›${R} ") " ch
@@ -391,7 +391,7 @@ user_del() {
         [[ -n "$exp" ]] && badge="до ${exp}"
         [[ -n "$tlim" ]] && badge="${badge} ${tlim}GB"
         mi "$i" "👤" "$em" "  ${DIM}${badge}${R}"
-        ((i++))
+        (( i++ )) || true
     done
     box_mid; mi "0" "◀" "Назад"; box_end
     read -rp "$(printf "${YELLOW}›${R} ") " ch
@@ -426,7 +426,7 @@ user_list() {
             local status_icon="✓"
             [[ -n "$ets" && "$ets" != "null" && "$now" -gt "$ets" ]] && status_icon="${RED}✗${R}"
             box_row "    ${status_icon} ${LIGHT}${em}${R}${info_str}"
-            ((cnt++)); ((total++))
+            (( cnt++ )) || true; (( total++ )) || true
         done < <(ib_emails "$tag")
         [[ $cnt -eq 0 ]] && box_row "    ${DIM}(нет пользователей)${R}"
         box_blank
@@ -447,7 +447,7 @@ user_link() {
     fi
     local i=1
     for em in "${emails[@]}"; do
-        mi "$i" "👤" "$em"; ((i++))
+        mi "$i" "👤" "$em"; (( i++ )) || true
     done
     box_mid; mi "0" "◀" "Назад"; box_end
     read -rp "$(printf "${YELLOW}›${R} ") " ch
@@ -500,7 +500,7 @@ user_set_limit() {
         local exp; exp=$(limit_get "$tag" "$em" "expire_date")
         local tlim; tlim=$(limit_get "$tag" "$em" "traffic_limit_gb")
         mi "$i" "👤" "$em" "  ${DIM}до:${exp:-∞} трафик:${tlim:-∞}GB${R}"
-        ((i++))
+        (( i++ )) || true
     done
     box_mid; mi "0" "◀" "Назад"; box_end
     read -rp "$(printf "${YELLOW}›${R} ") " ch

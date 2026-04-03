@@ -172,7 +172,7 @@ pick_inbound() {
         IFS='|' read -r t p pr n s <<< "$e"
         local uc; uc=$(ib_users_count "$t")
         mi "$i" "🔌" "${CYAN}${t}${R}" "  порт ${p} · ${uc} польз."
-        ((i++))
+        (( i++ )) || true
     done
     read -rp "$(printf "${YELLOW}›${R} Протокол: ")" idx
     [[ "$idx" -ge 1 && "$idx" -le ${#tags[@]} ]] || return 1

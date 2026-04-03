@@ -85,7 +85,7 @@ routing_list() {
     while [[ $i -lt $total ]]; do
         local tag; tag=$(jq -r --argjson n "$i" '.routing.rules[$n].inboundTag[0] // ""' "$XRAY_CONF" 2>/dev/null)
         # Пропустить служебное правило api
-        if [[ "$tag" == "api" ]]; then ((i++)); continue; fi
+        if [[ "$tag" == "api" ]]; then (( i++ )) || true; continue; fi
 
         local outb; outb=$(jq -r --argjson n "$i" '.routing.rules[$n] | .outboundTag // .balancerTag // "?"' "$XRAY_CONF" 2>/dev/null)
         local col="$LIGHT"
@@ -98,7 +98,7 @@ routing_list() {
         local summary; summary=$(routing_rule_summary "$i")
         local idx_disp=$(( i + 1 ))
         box_row "  ${DIM}#${idx_disp}${R}  ${col}→ ${outb}${R}  ${DIM}${summary}${R}"
-        ((i++))
+        (( i++ )) || true
     done
 
     box_blank; box_end; pause
@@ -145,11 +145,11 @@ _profile_multiselect() {
             fi
             printf "${DIM}│${R}  %b ${YELLOW}${BOLD}%s)${R} ${CYAN}%-20s${R} ${DIM}%s правил${R}\n" \
                 "$mark" "$((i+1))" "$name" "$rc"
-            ((i++))
+            (( i++ )) || true
         done
 
         local total_sel=0
-        for s in "${selected[@]}"; do [[ "$s" == "1" ]] && ((total_sel++)); done
+        for s in "${selected[@]}"; do [[ "$s" == "1" ]] && (( total_sel++ )) || true; done
 
         box_blank
         box_row "  ${DIM}Выбрано: ${YELLOW}${total_sel}${R}${DIM} профилей${R}"
@@ -199,7 +199,7 @@ _profile_multiselect() {
         if [[ "${selected[$i]}" == "1" ]]; then
             result="${result}${pfiles[$i]}"$'\n'
         fi
-        ((i++))
+        (( i++ )) || true
     done
     printf -v "$__result_var" '%s' "${result%$'\n'}"
 }
@@ -334,7 +334,7 @@ routing_add() {
     while IFS= read -r t; do
         [[ "$t" == "direct" || "$t" == "block" || "$t" == "api" || "$t" == "metrics_out" ]] && continue
         mi "$i" "🔌" "${CYAN}${t}${R}"
-        ob_list+=("$t"); ((i++))
+        ob_list+=("$t"); (( i++ )) || true
     done < <(jq -r '.outbounds[].tag' "$XRAY_CONF" 2>/dev/null)
     box_end
     read -rp "$(printf "${YELLOW}›${R} ") " ob_ch
@@ -416,9 +416,9 @@ routing_del() {
             local summary; summary=$(routing_rule_summary "$i")
             mi "$disp" "📍" "${DIM}${summary}${R}"
             display_indices+=("$i")
-            ((disp++))
+            (( disp++ )) || true
         fi
-        ((i++))
+        (( i++ )) || true
     done
 
     [[ ${#display_indices[@]} -eq 0 ]] && { box_row "  ${DIM}Нет правил для удаления${R}"; box_end; pause; return; }
@@ -474,9 +474,9 @@ routing_reorder() {
         if [[ "$tag" != "api" ]]; then
             local summary; summary=$(routing_rule_summary "$i")
             mi "$disp" "📍" "${DIM}${summary}${R}"
-            display_indices+=("$i"); ((disp++))
+            display_indices+=("$i"); (( disp++ )) || true
         fi
-        ((i++))
+        (( i++ )) || true
     done
     [[ ${#display_indices[@]} -le 1 ]] && { box_row "  ${DIM}Нечего перемещать${R}"; box_end; pause; return; }
     box_blank
@@ -587,7 +587,7 @@ menu_profiles() {
             local marker=""
             [[ "$name" == "$active" ]] && marker="${GREEN}◄ активен${R}"
             mi "$i" "📄" "${CYAN}${name}${R}  ${DIM}${desc:+— $desc }(${rc} правил)${R}  ${marker}"
-            pnames+=("$name"); pfiles+=("$file"); ((i++))
+            pnames+=("$name"); pfiles+=("$file"); (( i++ )) || true
         done < <(_profile_list)
 
         [[ ${#pnames[@]} -eq 0 ]] && box_row "  ${DIM}(нет сохранённых профилей)${R}"
@@ -695,7 +695,7 @@ profile_delete() {
 
     [[ ${#names[@]} -eq 0 ]] && { box_row "  ${DIM}Нет профилей${R}"; box_end; pause; return; }
     local i=1
-    for n in "${names[@]}"; do mi "$i" "📄" "$n"; ((i++)); done
+    for n in "${names[@]}"; do mi "$i" "📄" "$n"; (( i++ )) || true; done
     box_mid; mi "0" "◀" "Отмена"; box_end
     read -rp "$(printf "${YELLOW}›${R} ") " ch
     [[ "$ch" == "0" || -z "$ch" ]] && return
