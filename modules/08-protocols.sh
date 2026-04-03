@@ -144,6 +144,7 @@ proto_vless_ws_tls() {
             "wsSettings":{"path":$path}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
     ib_add "$ib"; xray_restart
+    _nginx_patch_location "ws" "$dom" "$port" "$path_v"
     cls; box_top " ✅  VLESS + WS + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  Домен: ${WHITE}${dom}${R}"
     box_row "  Path: ${WHITE}${path_v}${R}"
@@ -187,6 +188,7 @@ proto_vless_grpc_tls() {
             "grpcSettings":{"serviceName":$svc,"multiMode":false}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
     ib_add "$ib"; xray_restart
+    _nginx_patch_location "grpc" "$dom" "$port" "$svc"
     cls; box_top " ✅  VLESS + gRPC + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}"
     box_row "  Домен: ${WHITE}${dom}${R}  ServiceName: ${CYAN}${svc}${R}"
@@ -234,6 +236,7 @@ proto_vless_httpupgrade_tls() {
             "httpupgradeSettings":{"path":$path,"host":$sni}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
     ib_add "$ib"; xray_restart
+    _nginx_patch_location "httpupgrade" "$dom" "$port" "$path_v"
     cls; box_top " ✅  VLESS + HTTPUpgrade + TLS добавлен" "$GREEN"; box_blank
     box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  Path: ${WHITE}${path_v}${R}"
     box_blank; box_end
