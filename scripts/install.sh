@@ -86,9 +86,182 @@ cat << 'BANNER'
  ██╔╝ ██╗██║  ██║██║  ██║   ██║       ██║ ╚═╝ ██║╚██████╔╝██║  ██║
  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝
 BANNER
-printf "${R}\n  ${DIM}Установка стека v2.7.4${R}\n\n"
+printf "${R}\n  ${DIM}Установка стека v2.8.0${R}\n\n"
 
-# ── Параметры ─────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════
+# ОБНАРУЖЕНИЕ СУЩЕСТВУЮЩЕЙ УСТАНОВКИ
+# ══════════════════════════════════════════════════════════════
+
+_svc_active() { systemctl is-active --quiet "$1" 2>/dev/null; }
+_svc_exists() { systemctl list-unit-files "$1" 2>/dev/null | grep -q "$1"; }
+
+_detect_installed() {
+    # Возвращает 0 если что-то установлено, 1 если чисто
+    [[ -f /usr/local/bin/xray ]]             && return 0
+    [[ -f /usr/local/bin/xray-manager ]]     && return 0
+    [[ -f /usr/local/etc/xray/config.json ]] && return 0
+    command -v hysteria &>/dev/null          && return 0
+    [[ -f /etc/hysteria/config.yaml ]]       && return 0
+    [[ -f /usr/local/bin/telemt ]]           && return 0
+    _svc_exists telemt                       && return 0
+    { docker ps --format "{{.Names}}" 2>/dev/null | grep -q "^telemt$"; } && return 0
+    [[ -f /root/.xray-mgr-install ]]         && return 0
+    return 1
+}
+
+_show_installed_summary() {
+    local xray_ver="" hy_ver="" tm_ver="" tm_mode=""
+
+    printf "\n  ${YELLOW}${BOLD}Обнаружены установленные компоненты:${R}\n\n"
+
+    # Xray
+    if [[ -f /usr/local/bin/xray ]]; then
+        xray_ver=$(/usr/local/bin/xray version 2>/dev/null | grep -i 'xray\|version' | head -1 | awk '{print $NF}' || echo "?")
+        printf "  ${GREEN}✓${R}  Xray-core          ${DIM}%s${R}\n" "$xray_ver"
+    else
+        printf "  ${DIM}○  Xray-core          не установлен${R}\n"
+    fi
+
+    # xray-manager
+    if [[ -f /usr/local/bin/xray-manager ]]; then
+        printf "  ${GREEN}✓${R}  xray-manager       ${DIM}бинарник${R}\n"
+    else
+        printf "  ${DIM}○  xray-manager       не установлен${R}\n"
+    fi
+
+    # Hysteria2
+    if command -v hysteria &>/dev/null; then
+        hy_ver=$(hysteria version 2>/dev/null | grep -i version | awk '{print $NF}' || echo "?")
+        printf "  ${GREEN}✓${R}  Hysteria2          ${DIM}%s${R}\n" "$hy_ver"
+    else
+        printf "  ${DIM}○  Hysteria2          не установлен${R}\n"
+    fi
+
+    # telemt
+    if [[ -f /usr/local/bin/telemt ]]; then
+        tm_ver=$(/usr/local/bin/telemt --version 2>/dev/null | awk '{print $NF}' || echo "?")
+        _svc_active telemt && tm_mode="systemd, активен" || tm_mode="systemd, не активен"
+        printf "  ${GREEN}✓${R}  telemt (MTProto)   ${DIM}%s  %s${R}\n" "$tm_ver" "$tm_mode"
+    elif docker ps --format "{{.Names}}" 2>/dev/null | grep -q "^telemt$"; then
+        printf "  ${GREEN}✓${R}  telemt (MTProto)   ${DIM}Docker, запущен${R}\n"
+    else
+        printf "  ${DIM}○  telemt (MTProto)   не установлен${R}\n"
+    fi
+
+    # nginx / stream
+    if [[ -f /etc/nginx/sites-enabled/vpn.conf ]]; then
+        printf "  ${GREEN}✓${R}  nginx vhost        ${DIM}/etc/nginx/sites-enabled/vpn.conf${R}\n"
+    fi
+    if [[ -f /etc/nginx/stream.d/stream-443.conf ]]; then
+        printf "  ${GREEN}✓${R}  nginx stream       ${DIM}stream-443.conf (SNI на 443)${R}\n"
+    fi
+
+    # Параметры установки
+    if [[ -f /root/.xray-mgr-install ]]; then
+        local inst_domain; inst_domain=$(grep -oP '^DOMAIN="\K[^"]+' /root/.xray-mgr-install 2>/dev/null || echo "?")
+        printf "  ${GREEN}✓${R}  Параметры          ${DIM}/root/.xray-mgr-install  (домен: %s)${R}\n" "$inst_domain"
+    fi
+
+    printf "\n"
+}
+
+_purge_all() {
+    printf "\n  ${RED}${BOLD}Удаление всех компонентов...${R}\n\n"
+
+    # Xray
+    if [[ -f /usr/local/bin/xray ]]; then
+        info "Удаление Xray-core..."
+        bash -c "$(curl -4 -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" \
+            @ remove --purge 2>/dev/null || true
+        rm -f /usr/local/etc/xray/config.json
+        rm -f /usr/local/etc/xray/.keys.* 2>/dev/null || true
+        rm -f /usr/local/etc/xray/.limits.json 2>/dev/null || true
+        rm -rf /var/log/xray 2>/dev/null || true
+        ok "Xray удалён"
+    fi
+
+    # Hysteria2
+    if command -v hysteria &>/dev/null || [[ -f /etc/hysteria/config.yaml ]]; then
+        info "Удаление Hysteria2..."
+        systemctl stop hysteria-server 2>/dev/null || true
+        systemctl disable hysteria-server 2>/dev/null || true
+        rm -f /etc/systemd/system/hysteria-server.service \
+              /usr/local/bin/hysteria /usr/bin/hysteria 2>/dev/null || true
+        rm -rf /etc/hysteria 2>/dev/null || true
+        rm -f /root/hysteria-*.txt 2>/dev/null || true
+        ok "Hysteria2 удалена"
+    fi
+
+    # telemt (systemd)
+    if [[ -f /usr/local/bin/telemt ]] || _svc_exists telemt; then
+        info "Удаление telemt (systemd)..."
+        systemctl stop telemt 2>/dev/null || true
+        systemctl disable telemt 2>/dev/null || true
+        rm -f /etc/systemd/system/telemt.service /usr/local/bin/telemt 2>/dev/null || true
+        rm -rf /etc/telemt /opt/telemt 2>/dev/null || true
+        ok "telemt (systemd) удалён"
+    fi
+
+    # telemt (Docker)
+    if docker ps -a --format "{{.Names}}" 2>/dev/null | grep -q "^telemt$"; then
+        info "Удаление telemt (Docker)..."
+        docker compose -f "${HOME}/mtproxy/docker-compose.yml" down 2>/dev/null || true
+        rm -rf "${HOME}/mtproxy" 2>/dev/null || true
+        ok "telemt (Docker) удалён"
+    fi
+
+    # nginx конфиги
+    info "Очистка nginx..."
+    rm -f /etc/nginx/sites-enabled/vpn.conf \
+          /etc/nginx/sites-available/vpn.conf \
+          /etc/nginx/sites-available/acme-temp.conf \
+          /etc/nginx/stream.d/stream-443.conf 2>/dev/null || true
+    ok "nginx очищен"
+
+    # xray-manager
+    rm -f /usr/local/bin/xray-manager 2>/dev/null || true
+
+    # systemd таймеры лимитов
+    systemctl stop xray-limits.timer 2>/dev/null || true
+    systemctl disable xray-limits.timer 2>/dev/null || true
+    rm -f /etc/systemd/system/xray-limits.* 2>/dev/null || true
+
+    # Файлы состояния
+    rm -f /root/.xray-mgr-install /root/.xray-reality-local-port 2>/dev/null || true
+
+    systemctl daemon-reload 2>/dev/null || true
+    printf "\n  ${GREEN}${BOLD}Всё удалено. Продолжаем чистую установку...${R}\n\n"
+    sleep 1
+}
+
+_reinstall_menu() {
+    _show_installed_summary
+    printf "  ${BOLD}Что делаем?${R}\n\n"
+    printf "  ${CYAN}1)${R} ${BOLD}Чистая переустановка${R}  — удалить всё и установить заново\n"
+    printf "  ${CYAN}2)${R} Продолжить             — обновить nginx и скрипт, не трогая сервисы\n"
+    printf "  ${CYAN}0)${R} Выйти\n\n"
+    local ch
+    while true; do
+        read -rp " $(printf "${CYAN}?${R}") Выбор [1/2/0]: " ch
+        case "${ch:-}" in
+            1)
+                printf "\n  ${RED}${BOLD}ВНИМАНИЕ:${R} Это удалит Xray, Hysteria2, telemt и все конфиги.\n"
+                local yn; read -rp "  Вы уверены? [y/N]: " yn
+                [[ "${yn:-N}" =~ ^[Yy]$ ]] || { warn "Отменено"; exit 0; }
+                _purge_all
+                break
+                ;;
+            2) printf "\n  Продолжаем обновление...\n\n"; break ;;
+            0) printf "\n  Выход.\n"; exit 0 ;;
+            *) warn "Введите 1, 2 или 0" ;;
+        esac
+    done
+}
+
+# Запускаем детекцию до ввода параметров
+if _detect_installed; then
+    _reinstall_menu
+fi
 ask_val "Ваш домен (напр. vpn.example.com)" DOMAIN ""
 while [[ -z "$DOMAIN" ]]; do warn "Домен обязателен"; ask_val "Домен" DOMAIN ""; done
 
