@@ -9,10 +9,13 @@ menu_manage() {
         else st_icon="${RED}○${R}"; st_text="${RED}Остановлен${R}"; fi
         box_row "  Ядро:   ${CYAN}$(xray_ver)${R}   Статус: ${st_icon} ${st_text}"
         box_row "  IP:     ${YELLOW}$(server_ip)${R}"
+
+        # Статус маршрутизации
         local _rp; _rp=$(routing_active_profile 2>/dev/null || echo "custom")
         local _rn; _rn=$(routing_rules_count 2>/dev/null || echo 0)
         box_row "  Маршрутизация: ${DIM}профиль: ${_rp} · ${_rn} правил${R}"
         box_blank; box_mid
+
         mi "1" "📊" "Статус + логи"
         mi "2" "🔄" "Перезапустить"
         mi "3" "⏹" "$(xray_active && echo "Остановить" || echo "Запустить")"

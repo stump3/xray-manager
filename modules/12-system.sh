@@ -53,7 +53,7 @@ do_restore() {
     for b in "${baks[@]}"; do
         local sz; sz=$(du -sh "$b" 2>/dev/null | cut -f1)
         mi "$i" "💾" "$(basename "$b")" "  ${sz}"
-        (( i++ )) || true
+        ((i++))
     done
     box_mid; mi "0" "◀" "Назад"; box_end
     read -rp "$(printf "${YELLOW}›${R} ") " ch

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════
-#  Xray Manager — интерактивная установка v2.7.1
+#  Xray Manager — интерактивная установка v2.6.0
 #  Запуск: sudo bash scripts/install.sh
 # ══════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -39,42 +39,8 @@ _SPIN=""
 
 [[ "$(id -u)" -eq 0 ]] || { err "Запускать от root: sudo bash $0"; exit 1; }
 
-# Надёжное определение REPO_DIR — работает при curl|bash, bash scripts/install.sh,
-# и bash /absolute/path/scripts/install.sh.
-# BASH_SOURCE[0] пуст или "/dev/stdin" при curl|bash → dirname даёт "/dev" или "."
-# В этом случае fallback: ищем репо рядом с CWD или в /root/xray-manager.
-_detect_repo_dir() {
-    # Попытка 1: из BASH_SOURCE (работает при bash scripts/install.sh из репо)
-    local _src="${BASH_SOURCE[0]:-}"
-    if [[ -n "$_src" && "$_src" != "/dev/stdin" && "$_src" != "bash" ]]; then
-        local _sdir; _sdir="$(cd "$(dirname "$_src")" 2>/dev/null && pwd)"
-        local _rdir; _rdir="$(dirname "$_sdir")"
-        if [[ -f "${_rdir}/nginx/sites/vpn.conf" ]]; then
-            echo "$_rdir"; return
-        fi
-    fi
-    # Попытка 2: CWD содержит nginx/sites/vpn.conf (запуск из корня репо)
-    if [[ -f "$(pwd)/nginx/sites/vpn.conf" ]]; then
-        echo "$(pwd)"; return
-    fi
-    # Попытка 3: CWD — это scripts/, репо — родитель
-    if [[ -f "$(dirname "$(pwd)")/nginx/sites/vpn.conf" ]]; then
-        echo "$(dirname "$(pwd)")"; return
-    fi
-    # Попытка 4: стандартный путь клона
-    for _try in /root/xray-manager /root/xray-manager-main /opt/xray-manager; do
-        [[ -f "${_try}/nginx/sites/vpn.conf" ]] && { echo "$_try"; return; }
-    done
-    echo ""
-}
-REPO_DIR="$(_detect_repo_dir)"
-if [[ -z "$REPO_DIR" ]]; then
-    err "Не удалось найти файлы репозитория (nginx/sites/vpn.conf)."
-    err "Запускай так: cd /path/to/xray-manager && sudo bash scripts/install.sh"
-    exit 1
-fi
-SCRIPT_DIR="${REPO_DIR}/scripts"
-info "Репозиторий: ${REPO_DIR}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(dirname "$SCRIPT_DIR")"
 
 clear
 printf "\n${CYAN}${BOLD}"
@@ -86,182 +52,9 @@ cat << 'BANNER'
  ██╔╝ ██╗██║  ██║██║  ██║   ██║       ██║ ╚═╝ ██║╚██████╔╝██║  ██║
  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝
 BANNER
-printf "${R}\n  ${DIM}Установка стека v2.8.1${R}\n\n"
+printf "${R}\n  ${DIM}Установка стека v2.6.0${R}\n\n"
 
-# ══════════════════════════════════════════════════════════════
-# ОБНАРУЖЕНИЕ СУЩЕСТВУЮЩЕЙ УСТАНОВКИ
-# ══════════════════════════════════════════════════════════════
-
-_svc_active() { systemctl is-active --quiet "$1" 2>/dev/null; }
-_svc_exists() { systemctl list-unit-files "$1" 2>/dev/null | grep -q "$1"; }
-
-_detect_installed() {
-    # Возвращает 0 если что-то установлено, 1 если чисто
-    [[ -f /usr/local/bin/xray ]]             && return 0
-    [[ -f /usr/local/bin/xray-manager ]]     && return 0
-    [[ -f /usr/local/etc/xray/config.json ]] && return 0
-    command -v hysteria &>/dev/null          && return 0
-    [[ -f /etc/hysteria/config.yaml ]]       && return 0
-    [[ -f /usr/local/bin/telemt ]]           && return 0
-    _svc_exists telemt                       && return 0
-    { docker ps --format "{{.Names}}" 2>/dev/null | grep -q "^telemt$"; } && return 0
-    [[ -f /root/.xray-mgr-install ]]         && return 0
-    return 1
-}
-
-_show_installed_summary() {
-    local xray_ver="" hy_ver="" tm_ver="" tm_mode=""
-
-    printf "\n  ${YELLOW}${BOLD}Обнаружены установленные компоненты:${R}\n\n"
-
-    # Xray
-    if [[ -f /usr/local/bin/xray ]]; then
-        xray_ver=$(/usr/local/bin/xray version 2>/dev/null | grep -i 'xray\|version' | head -1 | awk '{print $NF}' || echo "?")
-        printf "  ${GREEN}✓${R}  Xray-core          ${DIM}%s${R}\n" "$xray_ver"
-    else
-        printf "  ${DIM}○  Xray-core          не установлен${R}\n"
-    fi
-
-    # xray-manager
-    if [[ -f /usr/local/bin/xray-manager ]]; then
-        printf "  ${GREEN}✓${R}  xray-manager       ${DIM}бинарник${R}\n"
-    else
-        printf "  ${DIM}○  xray-manager       не установлен${R}\n"
-    fi
-
-    # Hysteria2
-    if command -v hysteria &>/dev/null; then
-        hy_ver=$(hysteria version 2>/dev/null | grep -i version | awk '{print $NF}' || echo "?")
-        printf "  ${GREEN}✓${R}  Hysteria2          ${DIM}%s${R}\n" "$hy_ver"
-    else
-        printf "  ${DIM}○  Hysteria2          не установлен${R}\n"
-    fi
-
-    # telemt
-    if [[ -f /usr/local/bin/telemt ]]; then
-        tm_ver=$(/usr/local/bin/telemt --version 2>/dev/null | awk '{print $NF}' || echo "?")
-        _svc_active telemt && tm_mode="systemd, активен" || tm_mode="systemd, не активен"
-        printf "  ${GREEN}✓${R}  telemt (MTProto)   ${DIM}%s  %s${R}\n" "$tm_ver" "$tm_mode"
-    elif docker ps --format "{{.Names}}" 2>/dev/null | grep -q "^telemt$"; then
-        printf "  ${GREEN}✓${R}  telemt (MTProto)   ${DIM}Docker, запущен${R}\n"
-    else
-        printf "  ${DIM}○  telemt (MTProto)   не установлен${R}\n"
-    fi
-
-    # nginx / stream
-    if [[ -f /etc/nginx/sites-enabled/vpn.conf ]]; then
-        printf "  ${GREEN}✓${R}  nginx vhost        ${DIM}/etc/nginx/sites-enabled/vpn.conf${R}\n"
-    fi
-    if [[ -f /etc/nginx/stream.d/stream-443.conf ]]; then
-        printf "  ${GREEN}✓${R}  nginx stream       ${DIM}stream-443.conf (SNI на 443)${R}\n"
-    fi
-
-    # Параметры установки
-    if [[ -f /root/.xray-mgr-install ]]; then
-        local inst_domain; inst_domain=$(grep -oP '^DOMAIN="\K[^"]+' /root/.xray-mgr-install 2>/dev/null || echo "?")
-        printf "  ${GREEN}✓${R}  Параметры          ${DIM}/root/.xray-mgr-install  (домен: %s)${R}\n" "$inst_domain"
-    fi
-
-    printf "\n"
-}
-
-_purge_all() {
-    printf "\n  ${RED}${BOLD}Удаление всех компонентов...${R}\n\n"
-
-    # Xray
-    if [[ -f /usr/local/bin/xray ]]; then
-        info "Удаление Xray-core..."
-        bash -c "$(curl -4 -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" \
-            @ remove --purge 2>/dev/null || true
-        rm -f /usr/local/etc/xray/config.json
-        rm -f /usr/local/etc/xray/.keys.* 2>/dev/null || true
-        rm -f /usr/local/etc/xray/.limits.json 2>/dev/null || true
-        rm -rf /var/log/xray 2>/dev/null || true
-        ok "Xray удалён"
-    fi
-
-    # Hysteria2
-    if command -v hysteria &>/dev/null || [[ -f /etc/hysteria/config.yaml ]]; then
-        info "Удаление Hysteria2..."
-        systemctl stop hysteria-server 2>/dev/null || true
-        systemctl disable hysteria-server 2>/dev/null || true
-        rm -f /etc/systemd/system/hysteria-server.service \
-              /usr/local/bin/hysteria /usr/bin/hysteria 2>/dev/null || true
-        rm -rf /etc/hysteria 2>/dev/null || true
-        rm -f /root/hysteria-*.txt 2>/dev/null || true
-        ok "Hysteria2 удалена"
-    fi
-
-    # telemt (systemd)
-    if [[ -f /usr/local/bin/telemt ]] || _svc_exists telemt; then
-        info "Удаление telemt (systemd)..."
-        systemctl stop telemt 2>/dev/null || true
-        systemctl disable telemt 2>/dev/null || true
-        rm -f /etc/systemd/system/telemt.service /usr/local/bin/telemt 2>/dev/null || true
-        rm -rf /etc/telemt /opt/telemt 2>/dev/null || true
-        ok "telemt (systemd) удалён"
-    fi
-
-    # telemt (Docker)
-    if docker ps -a --format "{{.Names}}" 2>/dev/null | grep -q "^telemt$"; then
-        info "Удаление telemt (Docker)..."
-        docker compose -f "${HOME}/mtproxy/docker-compose.yml" down 2>/dev/null || true
-        rm -rf "${HOME}/mtproxy" 2>/dev/null || true
-        ok "telemt (Docker) удалён"
-    fi
-
-    # nginx конфиги
-    info "Очистка nginx..."
-    rm -f /etc/nginx/sites-enabled/vpn.conf \
-          /etc/nginx/sites-available/vpn.conf \
-          /etc/nginx/sites-available/acme-temp.conf \
-          /etc/nginx/stream.d/stream-443.conf 2>/dev/null || true
-    ok "nginx очищен"
-
-    # xray-manager
-    rm -f /usr/local/bin/xray-manager 2>/dev/null || true
-
-    # systemd таймеры лимитов
-    systemctl stop xray-limits.timer 2>/dev/null || true
-    systemctl disable xray-limits.timer 2>/dev/null || true
-    rm -f /etc/systemd/system/xray-limits.* 2>/dev/null || true
-
-    # Файлы состояния
-    rm -f /root/.xray-mgr-install /root/.xray-reality-local-port 2>/dev/null || true
-
-    systemctl daemon-reload 2>/dev/null || true
-    printf "\n  ${GREEN}${BOLD}Всё удалено. Продолжаем чистую установку...${R}\n\n"
-    sleep 1
-}
-
-_reinstall_menu() {
-    _show_installed_summary
-    printf "  ${BOLD}Что делаем?${R}\n\n"
-    printf "  ${CYAN}1)${R} ${BOLD}Чистая переустановка${R}  — удалить всё и установить заново\n"
-    printf "  ${CYAN}2)${R} Продолжить             — обновить nginx и скрипт, не трогая сервисы\n"
-    printf "  ${CYAN}0)${R} Выйти\n\n"
-    local ch
-    while true; do
-        read -rp " $(printf "${CYAN}?${R}") Выбор [1/2/0]: " ch
-        case "${ch:-}" in
-            1)
-                printf "\n  ${RED}${BOLD}ВНИМАНИЕ:${R} Это удалит Xray, Hysteria2, telemt и все конфиги.\n"
-                local yn; read -rp "  Вы уверены? [y/N]: " yn
-                [[ "${yn:-N}" =~ ^[Yy]$ ]] || { warn "Отменено"; exit 0; }
-                _purge_all
-                break
-                ;;
-            2) printf "\n  Продолжаем обновление...\n\n"; break ;;
-            0) printf "\n  Выход.\n"; exit 0 ;;
-            *) warn "Введите 1, 2 или 0" ;;
-        esac
-    done
-}
-
-# Запускаем детекцию до ввода параметров
-if _detect_installed; then
-    _reinstall_menu
-fi
+# ── Параметры ─────────────────────────────────────────────────
 ask_val "Ваш домен (напр. vpn.example.com)" DOMAIN ""
 while [[ -z "$DOMAIN" ]]; do warn "Домен обязателен"; ask_val "Домен" DOMAIN ""; done
 
@@ -301,8 +94,13 @@ echo "  ────────────────────────
 printf "   Домен:        ${CYAN}%s${R}\n"   "$DOMAIN"
 printf "   Email:        ${CYAN}%s${R}\n"   "$LE_EMAIL"
 printf "   WS порт:      ${YELLOW}%s${R}\n"  "$WS_PORT"
-printf "   REALITY порт: ${YELLOW}%s${R}\n"  "$REALITY_PORT"
-$USE_STREAM && printf "   Nginx порт:   ${YELLOW}4443${R} ${DIM}(за stream 443)${R}\n"
+if $USE_STREAM; then
+    _summary_xray_port="$REALITY_PORT"; [[ "$REALITY_PORT" == "443" ]] && _summary_xray_port="18443"
+    printf "   REALITY порт: ${YELLOW}%s${R} ${DIM}(stream → Xray inbound: %s)${R}\n" "$REALITY_PORT" "$_summary_xray_port"
+    printf "   Nginx порт:   ${YELLOW}4443${R} ${DIM}(за stream 443)${R}\n"
+else
+    printf "   REALITY порт: ${YELLOW}%s${R}\n" "$REALITY_PORT"
+fi
 printf "   SUB_TOKEN:    ${DIM}%s${R}\n"    "$SUB_TOKEN"
 echo "  ─────────────────────────────────────"
 echo ""
@@ -358,9 +156,6 @@ ok "UFW настроен"
 # ══════════════════════════════════════════════════════════════
 step 3 "Настройка Nginx"
 
-# Убрать артефакты предыдущих установок (stream-443 в conf.d ломает nginx -t)
-rm -f /etc/nginx/conf.d/stream-443.conf 2>/dev/null || true
-
 mkdir -p /var/www/html /var/www/certbot
 cat > /var/www/html/index.html << 'HTML'
 <!DOCTYPE html><html><head><meta charset="UTF-8"><title>OK</title>
@@ -380,17 +175,9 @@ server {
 ACME_CONF
 ln -sf /etc/nginx/sites-available/acme-temp.conf \
        /etc/nginx/sites-enabled/acme-temp.conf 2>/dev/null || true
-# При переустановке старый vpn.conf остаётся в sites-enabled и конфликтует
-# с acme-temp по server_name на 80 → убираем до nginx -t
-rm -f /etc/nginx/sites-enabled/default \
-      /etc/nginx/sites-enabled/vpn.conf 2>/dev/null || true
-if nginx -t -q 2>/dev/null && systemctl restart nginx; then
-    ok "Nginx запущен (временный ACME-конфиг)"
-else
-    # nginx -t вывел ошибки выше (-q не подавляет emerg/warn)
-    warn "nginx -t вернул ошибку — пробуем продолжить"
-    systemctl restart nginx 2>/dev/null || true
-fi
+rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+nginx -t -q && systemctl restart nginx
+ok "Nginx запущен (временный ACME-конфиг)"
 
 # ══════════════════════════════════════════════════════════════
 step 4 "TLS-сертификат"
@@ -474,56 +261,31 @@ if $USE_STREAM; then
     # Stream-конфиг: SNI-маршрутизация на 443
     # Трафик на домен → nginx (HTTPS), всё остальное (REALITY) → Xray
     # Xray REALITY слушает на 127.0.0.1:${REALITY_PORT} (или напрямую если нужно)
-    # Xray REALITY слушает на localhost-порту, а не на 0.0.0.0:443
-    # Чтобы не конфликтовать с nginx stream на 443.
-    # Если REALITY_PORT=443 — Xray уходит на внутренний порт 18443.
-    XRAY_LOCAL_PORT="${REALITY_PORT}"
-    [[ "$REALITY_PORT" == "443" ]] && XRAY_LOCAL_PORT="18443"
-
     mkdir -p /etc/nginx/stream.d
     cat > /etc/nginx/stream.d/stream-443.conf << STREAM_CONF
 stream {
-    # SNI-маршрутизация:
-    #   домен сервера  → nginx HTTPS (${NGINX_PORT})
-    #   всё остальное  → Xray REALITY (127.0.0.1:${XRAY_LOCAL_PORT})
     map \$ssl_preread_server_name \$backend {
-        ~^(.+\.)?$(echo "$DOMAIN" | sed 's/\./\./g')\$  nginx_https;
-        default                                            xray_reality;
+        ~^(.+\\.)?$(echo "$DOMAIN" | sed 's/\./\\./g')\$ nginx_https;
+        default                                          nginx_https;
     }
-    upstream nginx_https  { server 127.0.0.1:${NGINX_PORT}; }
-    upstream xray_reality { server 127.0.0.1:${XRAY_LOCAL_PORT}; }
+    upstream nginx_https { server 127.0.0.1:${NGINX_PORT}; }
     server {
         listen 443;
         listen [::]:443;
-        proxy_pass  \$backend;
-        ssl_preread on;
-        # proxy_protocol НЕ включаем для xray_reality — Xray его не ожидает
-        # Nginx передаёт поток как есть, Xray видит настоящий TLS ClientHello
+        proxy_pass     \$backend;
+        ssl_preread    on;
+        proxy_protocol on;
     }
 }
 STREAM_CONF
 
-    # Сохраняем порт для proto_vless_tcp_reality
-    echo "${XRAY_LOCAL_PORT}" > /root/.xray-reality-local-port
-
-    ok "Nginx stream: 443 → SNI → nginx(${NGINX_PORT}) | Xray(${XRAY_LOCAL_PORT})"
-    info "При добавлении VLESS+REALITY используй порт: ${XRAY_LOCAL_PORT} (не 443)"
-    warn "Xray должен слушать на 127.0.0.1:${XRAY_LOCAL_PORT}, а не 0.0.0.0:443"
+    ok "Nginx stream: 443 → SNI → nginx(${NGINX_PORT})"
+    info "Xray REALITY будет слушать на 0.0.0.0:${REALITY_PORT} напрямую"
+    info "Добавь правило роутинга в stream если захочешь пробросить REALITY через 443"
 fi
 
 ln -sf "$VHOST_DST" /etc/nginx/sites-enabled/vpn.conf
 rm -f /etc/nginx/sites-enabled/acme-temp.conf
-
-# ssl_stapling работает только если сертификат содержит OCSP URL.
-# Let's Encrypt через certbot — содержит. Через acme.sh без флага — может не содержать.
-# Проверяем и отключаем stapling если URL нет, чтобы не получать [warn] при старте.
-CERT_FILE="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
-if [[ -f "$CERT_FILE" ]] && ! openssl x509 -in "$CERT_FILE" -noout -text 2>/dev/null | grep -q "OCSP"; then
-    sed -i 's/ssl_stapling\s*on/ssl_stapling off/' "$VHOST_DST" 2>/dev/null || true
-    sed -i 's/ssl_stapling_verify\s*on/ssl_stapling_verify off/' "$VHOST_DST" 2>/dev/null || true
-    info "ssl_stapling отключён — сертификат не содержит OCSP URL"
-fi
-
 nginx -t -q && systemctl restart nginx
 ok "Nginx настроен (порт ${NGINX_PORT})"
 

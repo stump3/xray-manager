@@ -11,11 +11,10 @@ kget()    { grep "^${2}:" "$(kfile "$1")" 2>/dev/null | cut -d' ' -f2-; }
 # ──────────────────────────────────────────────────────────────────────────────
 
 cfg()     { jq -r "$1" "$XRAY_CONF" 2>/dev/null; }
-cfgw()    { 
+cfgw()    {
     local t; t=$(mktemp); _TMPFILES+=("$t")
     jq "$1" "$XRAY_CONF" > "$t" || return 1
     mv "$t" "$XRAY_CONF"
-    # 🔧 БАГ 1 FIX: сбросить права после любого изменения конфига
     chown nobody:nogroup "$XRAY_CONF" 2>/dev/null || true
     chmod 640 "$XRAY_CONF"
 }

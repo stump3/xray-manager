@@ -1,4 +1,7 @@
 main_menu() {
+    # IP кешируем один раз — curl на каждый рендер даёт задержку
+    local _cached_ip; _cached_ip=$(server_ip)
+
     while true; do
         cls
         local w; w=$(tw); local i=$((w-2))
@@ -19,7 +22,7 @@ main_menu() {
         # ── Статус Xray ───────────────────────────────────────────────────────
         # Используем box_row — он корректно считает ширину через ${#raw} (символы, не байты)
         local xver; xver=$(xray_ver)
-        local sip; sip=$(server_ip)
+        local sip="$_cached_ip"
         local st_ic st_tx
         if ! xray_ok; then st_ic="${RED}✗${R}"; st_tx="${RED}не установлен${R}"
         elif xray_active; then st_ic="${GREEN}●${R}"; st_tx="${GREEN}работает${R}"
@@ -37,7 +40,7 @@ main_menu() {
         while IFS='|' read -r tag port proto net sec; do
             local uc; uc=$(ib_users_count "$tag")
             box_row "  • ${CYAN}${tag}${R}  ${DIM}порт ${port}${R}  ${YELLOW}${uc} польз.${R}"
-            (( pc++ )) || true
+            ((pc++))
         done < <(ib_list)
         [[ $pc -eq 0 ]] && box_row "  ${DIM}Xray-протоколы не настроены${R}"
 
@@ -82,7 +85,8 @@ menu_transports() {
     while true; do
         cls; box_top " 🌐  Транспорты" "$CYAN"; box_blank
 
-        local mt_st="" hy_st=""
+        # Статус каждого транспорта в шапке
+        local mt_st=""; local hy_st=""
         if systemctl is-active --quiet telemt 2>/dev/null || \
            { docker ps --format "{{.Names}}" 2>/dev/null || true; } | grep -q "^telemt$"; then
             mt_st=" ${GREEN}●${R} ${DIM}$(get_telemt_version 2>/dev/null)${R}"
