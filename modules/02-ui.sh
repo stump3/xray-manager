@@ -41,19 +41,19 @@ box_top() {
     local w; w=$(tw); local i=$((w-2))
     local tl=${#title}; local p=$(( (i - tl - 2) ))
     local pl=$(( p/2 )); local pr=$(( p - pl ))
-    printf "${DIM}╭%s╮${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
+    printf "${DIM}╭%s╮${R}\n" "$(printf '%*s' "$i" "" | tr ' ' '─')"
     printf "${DIM}│${R} ${col}${BOLD}%*s%s%*s${R} ${DIM}│${R}\n" "$pl" "" "$title" "$pr" ""
-    printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
+    printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" "" | tr ' ' '─')"
 }
 
 box_end() {
     local w; w=$(tw); local i=$((w-2))
-    printf "${DIM}╰%s╯${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
+    printf "${DIM}╰%s╯${R}\n" "$(printf '%*s' "$i" "" | tr ' ' '─')"
 }
 
 box_mid() {
     local w; w=$(tw); local i=$((w-2))
-    printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
+    printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" "" | tr ' ' '─')"
 }
 
 box_row() {
@@ -166,6 +166,6 @@ spin_stop() {
 
 hr() {
     local w; w=$(tw)
-    printf "${DIM}%s${R}\n" "$(printf '%*s' "$w" | tr ' ' '─')"
+    printf "${DIM}%s${R}\n" "$(printf '%*s' "$w" "" | tr ' ' '─')"
 }
 

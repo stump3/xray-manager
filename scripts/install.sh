@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════
-#  Xray Manager — интерактивная установка v2.9.0
+#  Xray Manager — интерактивная установка v2.9.1
 #  Запуск: sudo bash scripts/install.sh
 # ══════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -106,7 +106,7 @@ cat << 'BANNER'
  ██╔╝ ██╗██║  ██║██║  ██║   ██║       ██║ ╚═╝ ██║╚██████╔╝██║  ██║
  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝
 BANNER
-printf "${R}\n  ${DIM}Установка стека v2.9.0${R}\n\n"
+printf "${R}\n  ${DIM}Установка стека v2.9.1${R}\n\n"
 
 # ══════════════════════════════════════════════════════════════
 # ОБНАРУЖЕНИЕ СУЩЕСТВУЮЩЕЙ УСТАНОВКИ
@@ -409,11 +409,32 @@ if [[ ${#NEED[@]} -gt 0 ]]; then
     spin_stop
 fi
 
-# Проверяем stream module (нужен для nginx stream SNI-маршрутизации)
+# Проверяем stream module (нужен для nginx stream SNI-маршрутизации).
+# Под set -euo pipefail каждый apt-вызов может упасть — spin_stop вызывается
+# в любом исходе через ловушку, а затем явно падаем с warn вместо выхода.
 if $USE_STREAM && ! nginx -V 2>&1 | grep -q "stream_module\|ngx_stream"; then
-    spin_start "nginx-full (stream module)"
-    apt_install_quiet nginx-full 2>/dev/null
-    spin_stop
+    _stream_ok=false
+    spin_start "nginx stream module"
+
+    # Попытка 1: nginx-module-stream (nginx.org mainline — уже включён в пакет)
+    if apt_install_quiet nginx-module-stream 2>/dev/null; then
+        _stream_ok=true
+    # Попытка 2: nginx-full (Ubuntu/Debian — собран с --with-stream)
+    elif apt_install_quiet nginx-full 2>/dev/null; then
+        _stream_ok=true
+    # Попытка 3: libnginx-mod-stream (Debian-специфичный пакет модуля)
+    elif apt_install_quiet libnginx-mod-stream 2>/dev/null; then
+        _stream_ok=true
+    fi
+
+    if $_stream_ok; then
+        spin_stop "ok"
+    else
+        spin_stop "err"
+        warn "Stream module не удалось установить — SNI-маршрутизация на 443 недоступна"
+        warn "Установите вручную: apt-get install nginx-full"
+        USE_STREAM=false
+    fi
 fi
 
 NGINX_MINOR=$(nginx -v 2>&1 | grep -oP '\d+\.\d+' | head -1 | cut -d. -f2 || echo 0)
