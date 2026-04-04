@@ -15,7 +15,7 @@ gen_link() {
     #   1) явный $3 — вызывающий закешировал сам (локальный вызов)
     #   2) _CACHED_SERVER_IP — экспортированный родителем (_sub_all_links)
     #   3) server_ip() — одиночный вызов без кеша
-    local sip="${3:-${_CACHED_SERVER_IP:-$(server_ip)}}"
+    local sip; sip="${3:-${_CACHED_SERVER_IP:-$(server_ip)}}"
 
     case "${proto}:${net}" in
 

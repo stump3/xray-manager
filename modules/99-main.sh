@@ -20,16 +20,27 @@ main_menu() {
         printf "${DIM}├%s┤${R}\n" "$(printf '%*s' "$i" | tr ' ' '─')"
 
         # ── Статус Xray ───────────────────────────────────────────────────────
-        # Используем box_row — он корректно считает ширину через ${#raw} (символы, не байты)
         local xver; xver=$(xray_ver)
         local sip="$_cached_ip"
         local st_ic st_tx
         if ! xray_ok; then st_ic="${RED}✗${R}"; st_tx="${RED}не установлен${R}"
         elif xray_active; then st_ic="${GREEN}●${R}"; st_tx="${GREEN}работает${R}"
         else st_ic="${YELLOW}○${R}"; st_tx="${YELLOW}остановлен${R}"; fi
-        box_row "  Xray: ${st_ic} ${CYAN}${xver}${R}  ${st_tx}  IP: ${YELLOW}${sip}${R}"
 
-        # ── Статус подписки ───────────────────────────────────────────────────
+        # Nginx status
+        local ngx_ic
+        if systemctl is-active --quiet nginx 2>/dev/null; then ngx_ic="${GREEN}●${R}"
+        else ngx_ic="${YELLOW}○${R}"; fi
+
+        # Subscription status
+        local sub_ic
+        if _sub_is_running 2>/dev/null; then sub_ic="${GREEN}●${R}"
+        else sub_ic="${DIM}○${R}"; fi
+
+        # Unified status bar (render_status_bar from 02-ui.sh)
+        render_status_bar "${st_ic} ${CYAN}${xver}${R} ${st_tx}" "${ngx_ic}" "${sub_ic}" "${sip}"
+
+        # ── Статус подписки (порт) ────────────────────────────────────────────
         if _sub_is_running 2>/dev/null; then
             local _sp; _sp=$(_sub_get_port 2>/dev/null || echo "?")
             box_row "  📡 Подписка: ${GREEN}●${R} ${DIM}:${_sp}${R}"

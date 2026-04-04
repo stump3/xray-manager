@@ -37,6 +37,60 @@ spin_stop() {
 }
 _SPIN=""
 
+# ── Dry-run mode ───────────────────────────────────────────────────────────────
+DRY_RUN=false
+for _arg in "$@"; do [[ "$_arg" == "--dry-run" ]] && DRY_RUN=true; done
+unset _arg
+
+# Выполнить команду или показать план без изменений (--dry-run)
+run_step() {
+    local desc="$1"; shift
+    if $DRY_RUN; then
+        info "[dry-run] $desc: $*"
+        return 0
+    fi
+    "$@"
+}
+
+# ── APT helpers ────────────────────────────────────────────────────────────────
+# Проверяет доступность внешнего репозитория. Возвращает 1 + warn если недоступен.
+preflight_repo_check() {
+    local url="$1" name="$2"
+    if ! curl -fsSIL --connect-timeout 5 --max-time 12 "$url" >/dev/null 2>&1; then
+        warn "Репозиторий ${name} недоступен (${url}) — пропускаем"
+        return 1
+    fi
+    return 0
+}
+
+# apt-get update с retry и сетевым таймаутом
+apt_update_quiet() {
+    run_step "apt-get update" \
+        apt-get -qq \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=15 \
+            -o Acquire::https::Timeout=15 \
+            update
+}
+
+# noninteractive install, автоматическое разрешение conffile-конфликтов
+apt_install_quiet() {
+    run_step "apt-get install $*" \
+        env DEBIAN_FRONTEND=noninteractive apt-get -y -qq \
+            -o Dpkg::Options::="--force-confdef" \
+            -o Dpkg::Options::="--force-confold" \
+            install "$@"
+}
+
+# noninteractive remove
+apt_remove_quiet() {
+    run_step "apt-get remove $*" \
+        env DEBIAN_FRONTEND=noninteractive apt-get -y -qq \
+            -o Dpkg::Options::="--force-confdef" \
+            -o Dpkg::Options::="--force-confold" \
+            remove "$@"
+}
+
 [[ "$(id -u)" -eq 0 ]] || { err "Запускать от root: sudo bash $0"; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -274,6 +328,21 @@ printf " ${YELLOW}?${R} Всё верно? [Y/n]: "
 read -r confirm
 [[ "${confirm,,}" == "n" ]] && { info "Отменено"; exit 0; }
 
+if $DRY_RUN; then
+    printf "\n${YELLOW}${BOLD}  ▶ DRY-RUN: план установки (изменений не будет)${R}\n\n"
+    info "[dry-run] apt-get update (retry=3, timeout=15s)"
+    info "[dry-run] preflight_repo_check nginx.org"
+    info "[dry-run] apt_install_quiet certbot python3-certbot-nginx curl jq openssl qrencode python3 uuid-runtime unzip dnsutils ufw"
+    info "[dry-run] apt_install_quiet nginx (если версия < 1.25)"
+    info "[dry-run] certbot certonly --domain ${DOMAIN}"
+    info "[dry-run] nginx config → /etc/nginx/sites-enabled/"
+    info "[dry-run] xray install → /usr/local/bin/xray"
+    info "[dry-run] xray config → /usr/local/etc/xray/config.json"
+    info "[dry-run] systemctl enable --now xray nginx"
+    printf "\n${DIM}  Запустите без --dry-run для реальной установки.${R}\n\n"
+    exit 0
+fi
+
 # ══════════════════════════════════════════════════════════════
 step 1 "Установка зависимостей"
 
@@ -291,7 +360,7 @@ command -v nginx &>/dev/null && \
     NGINX_MINOR=$(nginx -v 2>&1 | grep -oP '\d+\.\d+' | head -1 | cut -d. -f2 || echo 0)
 
 spin_start "apt-get update"
-apt-get update -qq 2>/dev/null
+apt_update_quiet 2>/dev/null
 spin_stop; ok "Индексы обновлены"
 
 # Устанавливаем nginx из официального репозитория nginx.org если версия < 1.25.
@@ -299,13 +368,20 @@ spin_stop; ok "Индексы обновлены"
 # директива «http2 on;» (>=1.25) работает корректно без nginx-full.
 _ensure_nginx_official() {
     local cur_minor=0
-    command -v nginx &>/dev/null &&         cur_minor=$(nginx -v 2>&1 | grep -oP '\d+\.\d+' | head -1 | cut -d. -f2 || echo 0)
+    command -v nginx &>/dev/null && \
+        cur_minor=$(nginx -v 2>&1 | grep -oP '\d+\.\d+' | head -1 | cut -d. -f2 || echo 0)
     if [[ "$cur_minor" -ge 25 ]]; then
         ok "nginx 1.${cur_minor}: уже актуальная версия"
         return
     fi
-    info "nginx < 1.25 — устанавливаем из nginx.org (mainline)..."
-    curl -fsSL https://nginx.org/keys/nginx_signing.key         | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg 2>/dev/null || {
+    info "nginx < 1.25 — проверяем nginx.org..."
+    # Preflight: не добавляем репозиторий если он недоступен
+    if ! preflight_repo_check "https://nginx.org/packages/mainline/ubuntu" "nginx.org"; then
+        warn "Продолжаем с системным nginx (без nginx.org)"
+        return
+    fi
+    curl -fsSL https://nginx.org/keys/nginx_signing.key \
+        | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg 2>/dev/null || {
         warn "Не удалось добавить ключ nginx.org — продолжаем с системным nginx"
         return
     }
@@ -313,10 +389,10 @@ _ensure_nginx_official() {
     cat > /etc/apt/sources.list.d/nginx.list << NGINX_REPO
 deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] https://nginx.org/packages/mainline/ubuntu ${codename} nginx
 NGINX_REPO
-    apt-get update -qq 2>/dev/null
+    apt_update_quiet 2>/dev/null
     # Удаляем старый nginx перед установкой нового во избежание конфликтов
-    dpkg -s nginx &>/dev/null && DEBIAN_FRONTEND=noninteractive apt-get remove -y -qq nginx nginx-full nginx-extras 2>/dev/null || true
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nginx
+    dpkg -s nginx &>/dev/null && apt_remove_quiet nginx nginx-full nginx-extras 2>/dev/null || true
+    apt_install_quiet nginx
     ok "nginx $(nginx -v 2>&1 | grep -oP '[\d.]+'): обновлён из nginx.org"
 }
 _ensure_nginx_official
@@ -329,14 +405,14 @@ for p in "${PKGS[@]}"; do dpkg -s "$p" &>/dev/null || NEED+=("$p"); done
 if [[ ${#NEED[@]} -gt 0 ]]; then
     info "Устанавливаем: ${NEED[*]}"
     spin_start "apt-get install"
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${NEED[@]}" 2>/dev/null
+    apt_install_quiet "${NEED[@]}" 2>/dev/null
     spin_stop
 fi
 
 # Проверяем stream module (нужен для nginx stream SNI-маршрутизации)
 if $USE_STREAM && ! nginx -V 2>&1 | grep -q "stream_module\|ngx_stream"; then
     spin_start "nginx-full (stream module)"
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nginx-full 2>/dev/null
+    apt_install_quiet nginx-full 2>/dev/null
     spin_stop
 fi
 

@@ -23,7 +23,7 @@ build: $(MODULES)
 check:
 	@command -v shellcheck >/dev/null || { echo "Install shellcheck first"; exit 1; }
 	@echo "  LINT   modules/*.sh"
-	@shellcheck -S warning -e SC2034,SC2086 $(MODULES) \
+	@shellcheck -S warning --shell=bash -e SC2034,SC2086,SC2148 $(MODULES) \
 		&& echo "  LINT   ✓ no warnings" \
 		|| true
 

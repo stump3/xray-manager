@@ -90,7 +90,10 @@ do_remove_all() {
     box_row "  ${RED}${BOLD}Удаляет: Xray, Hysteria2, telemt, nginx конфиги, ключи, логи!${R}"
     box_blank; box_end
     confirm "Вы уверены?" "n" || return
-    confirm "Последнее предупреждение. Продолжить?" "n" || return
+    box_blank
+    box_row "  ${RED}Введите слово ${BOLD}УДАЛИТЬ${R}${RED} для подтверждения:${R}"
+    box_end
+    confirm_word "УДАЛИТЬ" || { info "Операция отменена"; return; }
 
     # Xray — через официальный установщик
     bash -c "$(curl -4 -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" \

@@ -70,7 +70,7 @@ hysteria_install() {
         case "$reinstall_ch" in
             1)
                 info "Переустановка с сохранением конфига..."
-                local backup_cfg="/tmp/hysteria_backup_$(date +%Y%m%d_%H%M%S).yaml"
+                local backup_cfg; backup_cfg="/tmp/hysteria_backup_$(date +%Y%m%d_%H%M%S).yaml"
                 cp "$HYSTERIA_CONFIG" "$backup_cfg" 2>/dev/null && info "Конфиг сохранён: $backup_cfg"
                 systemctl stop "$HYSTERIA_SVC" 2>/dev/null || true
                 bash <(curl -fsSL https://get.hy2.sh/) || { err "Ошибка установки"; return 1; }

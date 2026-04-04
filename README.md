@@ -3,7 +3,7 @@
 Bash-инструмент для управления VPN-сервером на базе Xray-core.  
 Поддерживает VLESS, VMess, Trojan, Shadowsocks 2022, Hysteria2 и MTProto из единого интерактивного меню.
 
-![Version](https://img.shields.io/badge/version-2.8.2-0ea5e9?style=flat-square)
+![Version](https://img.shields.io/badge/version-2.9.0-0ea5e9?style=flat-square)
 ![Platform](https://img.shields.io/badge/Ubuntu_22%2B_%7C_Debian_11%2B-orange?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)
 
@@ -19,6 +19,12 @@ sudo bash scripts/install.sh
 ```
 
 Скрипт интерактивно спросит домен, email для Let's Encrypt и порты — и сделает всё остальное.
+
+> **Хотите сначала увидеть план без изменений?**
+> ```bash
+> sudo bash scripts/install.sh --dry-run
+> ```
+> Выведет все шаги (APT, certbot, Xray, nginx, systemctl) и выйдет без касания системы.
 
 После установки:
 
@@ -118,7 +124,7 @@ xray-manager/
 ├── modules/               ← исходники (18 модулей)
 │   ├── 00-header.sh       — shebang, trap, tmpfiles
 │   ├── 01-constants.sh    — пути, порты, версия
-│   ├── 02-ui.sh           — box_*, mi(), visible_width()
+│   ├── 02-ui.sh           — box_*, mi(), confirm(), confirm_word(), render_status_bar()
 │   ├── 03-system.sh       — root, зависимости, BBR
 │   ├── 04-xray-core.sh    — установка/обновление Xray
 │   ├── 05-config.sh       — cfgw(), ib_*, xray_restart()
@@ -136,7 +142,7 @@ xray-manager/
 │   └── 99-main.sh         — main_menu()
 │
 ├── scripts/
-│   ├── install.sh                ← точка входа установки
+│   ├── install.sh                ← точка входа установки (поддерживает --dry-run)
 │   └── certbot-deploy-hook.sh   ← авторестарт после обновления сертификата
 │
 ├── nginx/

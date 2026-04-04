@@ -1,6 +1,7 @@
 # ──────────────────────────────────────────────────────────────────────────────
 #  ВСПОМОГАТЕЛЬНЫЕ UI-ФУНКЦИИ
 # ──────────────────────────────────────────────────────────────────────────────
+# shellcheck disable=SC2059  # ANSI-code vars (DIM, R, GREEN …) never contain %
 
 tw() { tput cols 2>/dev/null || echo 80; }
 
@@ -125,6 +126,22 @@ confirm() {
 pause() {
     printf "\n${DIM}%s${R}" "${1:-Нажмите Enter...}"
     read -r
+}
+
+# Подтверждение деструктивного действия вводом конкретного слова.
+# Использование: confirm_word "УДАЛИТЬ" || return
+confirm_word() {
+    local phrase="${1:-ПОДТВЕРДИТЬ}" _w
+    printf "  ${RED}Введите ${BOLD}%s${R}${RED} для продолжения:${R} " "$phrase"
+    read -r _w < /dev/tty
+    [[ "$_w" == "$phrase" ]]
+}
+
+# Строка статуса: xray / nginx / подписка / IP.
+# Использование: render_status_bar "$(xray_state)" "$(nginx_state)" "$(sub_state)" "$(server_ip)"
+render_status_bar() {
+    local xray="${1:-${DIM}?${R}}" ngx="${2:-${DIM}?${R}}" sub="${3:-${DIM}?${R}}" ip="${4:-?}"
+    box_row "  Xray: ${xray}  Nginx: ${ngx}  Sub: ${sub}  IP: ${DIM}${ip}${R}"
 }
 
 ok()   { printf " ${GREEN}✓${R} %b\n" "$*"; }

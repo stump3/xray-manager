@@ -304,7 +304,7 @@ _telemt_patch_stream() {
         return 0
     fi
 
-    local bak="${stream_conf}.bak.$(date +%s)"
+    local bak; bak="${stream_conf}.bak.$(date +%s)"
     cp "$stream_conf" "$bak"
 
     # Экранируем точки в домене для map-паттерна
@@ -376,7 +376,7 @@ telemt_menu_install() {
         telemt_write_compose "$_internal_port"
         # stream-режим: слушаем только на localhost
         $_use_nginx_stream && sed -i 's/^ip = "0\.0\.0\.0"/ip = "127.0.0.1"/' "$TELEMT_CONFIG_FILE"
-        cd "$TELEMT_WORK_DIR_DOCKER"
+        cd "$TELEMT_WORK_DIR_DOCKER" || die "Директория не найдена: $TELEMT_WORK_DIR_DOCKER"
         docker compose pull -q; docker compose up -d
         ok "Контейнер запущен"
     fi
