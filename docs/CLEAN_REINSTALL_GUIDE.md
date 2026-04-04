@@ -90,6 +90,24 @@ nginx -t && systemctl reload nginx || true
 
 > ⚠️ Это удаляет только конфиги, созданные/используемые данным проектом, а не весь nginx целиком.
 
+### 2.4.1 (Опционально) Полностью удалить nginx + certbot
+
+Используйте этот шаг, если nginx установлен/обновлён некорректно и вы хотите полностью переустановить веб-стек.
+
+```bash
+systemctl stop nginx 2>/dev/null || true
+systemctl disable nginx 2>/dev/null || true
+
+apt-get remove --purge -y nginx nginx-full nginx-extras nginx-common \
+  libnginx-mod-* certbot python3-certbot-nginx || true
+apt-get autoremove -y || true
+
+rm -rf /etc/nginx /var/log/nginx /var/cache/nginx /var/lib/nginx
+rm -rf /etc/letsencrypt /var/lib/letsencrypt /var/log/letsencrypt
+```
+
+> ⚠️ Внимание: этот шаг затронет **все** сайты/проекты на сервере, использующие nginx/certbot.
+
 ### 2.5 Очистить таймеры/состояние xray-manager
 
 ```bash
@@ -165,4 +183,4 @@ echo "DONE: очистка завершена"
 
 ## 5) Важное замечание
 
-Если хотите удалить **вообще весь nginx** и сертификаты certbot — это уже отдельная операция и может затронуть другие сайты/проекты на сервере.
+Полный purge nginx/certbot вынесен в отдельный шаг **2.4.1**. Используйте его только при необходимости.
