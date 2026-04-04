@@ -40,6 +40,15 @@ proto_vless_tcp_reality() {
     local _target
     if [[ "$sni" == "$_domain" && -n "$_nginx_port" ]]; then
         _target="127.0.0.1:${_nginx_port}"
+        # BUG-5: steal-yourself — проверяем что nginx реально слушает целевой порт
+        # Если nginx не запущен, конфиг запишется, но клиенты не смогут подключиться
+        if ! ss -tlnp 2>/dev/null | grep -qP "127\.0\.0\.1:${_nginx_port}\b|0\.0\.0\.0:${_nginx_port}\b"; then
+            warn "nginx не слушает на 127.0.0.1:${_nginx_port} (steal yourself)"
+            warn "Xray будет перенаправлять TLS на несуществующий backend"
+            printf " ${YELLOW}?${R} Продолжить всё равно? [y/N]: "
+            local _cont; read -r _cont < /dev/tty
+            [[ "${_cont,,}" != "y" ]] && { pause; return; }
+        fi
     else
         _target="${sni}:443"
     fi

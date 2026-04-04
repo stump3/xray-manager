@@ -53,11 +53,46 @@ install_self() {
 }
 
 _init_config() {
-    if [[ -f "$XRAY_CONF" ]]; then
-        local _ok; _ok=$(jq -r '(.stats // empty) + (.api.tag // empty) + (.policy // empty | tostring)' "$XRAY_CONF" 2>/dev/null || echo "")
-        [[ -n "$_ok" ]] && return
-        warn "config.json существует, но не содержит stats/api/policy — пересоздаём..."
+    if [[ ! -f "$XRAY_CONF" ]]; then
+        # Чистая установка — пишем полный базовый конфиг
+        _write_base_config
+        return
     fi
+
+    # Конфиг уже существует (обновление ядра, повторный вызов).
+    # Хирургически добавляем только отсутствующие блоки — inbounds НЕ трогаем,
+    # чтобы не потерять уже настроенные протоколы.
+    local tmp; tmp=$(mktemp); _TMPFILES+=("$tmp")
+    if jq '
+      if .stats  == null then . + {"stats": {}} else . end |
+      if .api    == null then . + {"api": {
+          "tag": "api",
+          "services": ["StatsService", "HandlerService"]
+        }} else . end |
+      if .policy == null then . + {"policy": {
+          "levels": {"0": {"statsUserUplink": true, "statsUserDownlink": true}},
+          "system": {"statsInboundUplink": true, "statsInboundDownlink": true}
+        }} else . end |
+      if ([(.outbounds // [])[].protocol] | index("freedom")) == null
+        then .outbounds = [{"protocol":"freedom","tag":"direct"}] + (.outbounds // [])
+      else . end |
+      if ([(.outbounds // [])[].protocol] | index("blackhole")) == null
+        then .outbounds += [{"protocol":"blackhole","tag":"block"}]
+      else . end
+    ' "$XRAY_CONF" > "$tmp" 2>/dev/null; then
+        mv "$tmp" "$XRAY_CONF"
+        chown nobody:nogroup "$XRAY_CONF" 2>/dev/null || true
+        chmod 640 "$XRAY_CONF"
+    else
+        warn "_init_config: jq merge завершился с ошибкой — конфиг не изменён"
+    fi
+
+    mkdir -p "$XRAY_LOG_DIR"
+    touch "$XRAY_LOG_DIR/access.log" "$XRAY_LOG_DIR/error.log" 2>/dev/null || true
+}
+
+_write_base_config() {
+    # Вызывается ТОЛЬКО при отсутствии config.json (чистая установка).
     cat > "$XRAY_CONF" << 'JSON'
 {
   "log": {"loglevel": "warning", "access": "/var/log/xray/access.log", "error": "/var/log/xray/error.log"},

@@ -42,11 +42,21 @@ ib_add() {
 xray_restart() {
     chown nobody:nogroup "$XRAY_CONF" 2>/dev/null || true
     chmod 640 "$XRAY_CONF"
+
+    # Валидация конфига перед перезапуском — ловим ошибки до того, как
+    # сервис упадёт и все клиенты потеряют соединение.
+    local test_out
+    if ! test_out=$("$XRAY_BIN" run -test -c "$XRAY_CONF" 2>&1); then
+        err "Конфиг содержит ошибки — перезапуск отменён:"
+        printf '%s
+' "$test_out" | grep -v "^$" | head -10 >&2
+        return 1
+    fi
+
     systemctl restart xray 2>/dev/null || true
     sleep 1
-    # Намеренно всегда возвращаем 0 — set -e не должен убивать меню
-    # если Xray не поднялся (например занят порт). Пользователь увидит
-    # статус в шапке главного меню при следующем открытии.
+    # Намеренно возвращаем 0 при незапущенном сервисе — set -e не должен
+    # убивать меню если Xray не поднялся (например занят порт).
     if ! xray_active 2>/dev/null; then
         warn "Xray не запустился — проверь порт: journalctl -u xray -n 5 --no-pager"
     fi

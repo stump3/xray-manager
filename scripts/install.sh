@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════
-#  Xray Manager — интерактивная установка v2.8.3
+#  Xray Manager — интерактивная установка v2.9.0
 #  Запуск: sudo bash scripts/install.sh
 # ══════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -52,7 +52,7 @@ cat << 'BANNER'
  ██╔╝ ██╗██║  ██║██║  ██║   ██║       ██║ ╚═╝ ██║╚██████╔╝██║  ██║
  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝
 BANNER
-printf "${R}\n  ${DIM}Установка стека v2.8.3${R}\n\n"
+printf "${R}\n  ${DIM}Установка стека v2.9.0${R}\n\n"
 
 # ══════════════════════════════════════════════════════════════
 # ОБНАРУЖЕНИЕ СУЩЕСТВУЮЩЕЙ УСТАНОВКИ
@@ -294,7 +294,34 @@ spin_start "apt-get update"
 apt-get update -qq 2>/dev/null
 spin_stop; ok "Индексы обновлены"
 
-PKGS=(nginx certbot python3-certbot-nginx curl jq openssl
+# Устанавливаем nginx из официального репозитория nginx.org если версия < 1.25.
+# nginx.org-пакет: stream module включён по умолчанию, актуальные патчи безопасности,
+# директива «http2 on;» (>=1.25) работает корректно без nginx-full.
+_ensure_nginx_official() {
+    local cur_minor=0
+    command -v nginx &>/dev/null &&         cur_minor=$(nginx -v 2>&1 | grep -oP '\d+\.\d+' | head -1 | cut -d. -f2 || echo 0)
+    if [[ "$cur_minor" -ge 25 ]]; then
+        ok "nginx 1.${cur_minor}: уже актуальная версия"
+        return
+    fi
+    info "nginx < 1.25 — устанавливаем из nginx.org (mainline)..."
+    curl -fsSL https://nginx.org/keys/nginx_signing.key         | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg 2>/dev/null || {
+        warn "Не удалось добавить ключ nginx.org — продолжаем с системным nginx"
+        return
+    }
+    local codename; codename=$(lsb_release -cs 2>/dev/null || echo "noble")
+    cat > /etc/apt/sources.list.d/nginx.list << NGINX_REPO
+deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] https://nginx.org/packages/mainline/ubuntu ${codename} nginx
+NGINX_REPO
+    apt-get update -qq 2>/dev/null
+    # Удаляем старый nginx перед установкой нового во избежание конфликтов
+    dpkg -s nginx &>/dev/null && DEBIAN_FRONTEND=noninteractive apt-get remove -y -qq nginx nginx-full nginx-extras 2>/dev/null || true
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nginx
+    ok "nginx $(nginx -v 2>&1 | grep -oP '[\d.]+'): обновлён из nginx.org"
+}
+_ensure_nginx_official
+
+PKGS=(certbot python3-certbot-nginx curl jq openssl
       qrencode python3 uuid-runtime unzip dnsutils ufw)
 NEED=()
 for p in "${PKGS[@]}"; do dpkg -s "$p" &>/dev/null || NEED+=("$p"); done
@@ -306,6 +333,7 @@ if [[ ${#NEED[@]} -gt 0 ]]; then
     spin_stop
 fi
 
+# Проверяем stream module (нужен для nginx stream SNI-маршрутизации)
 if $USE_STREAM && ! nginx -V 2>&1 | grep -q "stream_module\|ngx_stream"; then
     spin_start "nginx-full (stream module)"
     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nginx-full 2>/dev/null
@@ -400,11 +428,12 @@ HOOK_DST="/etc/letsencrypt/renewal-hooks/deploy/reload-services.sh"
 
 # ── Основной nginx vhost ──────────────────────────────────────
 NGINX_CONF_SRC="${REPO_DIR}/nginx/nginx.conf"
+# stream.d создаём безусловно — nginx.conf всегда содержит include для него
+mkdir -p /etc/nginx/stream.d
 if [[ -f "$NGINX_CONF_SRC" ]]; then
     if ! grep -q "stream.d" /etc/nginx/nginx.conf 2>/dev/null; then
         cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.bak.$(date +%Y%m%d_%H%M%S)
         cp "$NGINX_CONF_SRC" /etc/nginx/nginx.conf
-        mkdir -p /etc/nginx/stream.d
         info "nginx.conf обновлён (добавлена поддержка stream.d)"
     fi
 fi
