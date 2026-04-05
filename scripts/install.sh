@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════
-#  Xray Manager — интерактивная установка v3.0.6
+#  Xray Manager — интерактивная установка v2.9.1
 #  Запуск: sudo bash scripts/install.sh
 # ══════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -196,7 +196,7 @@ cat << 'BANNER'
  ██╔╝ ██╗██║  ██║██║  ██║   ██║       ██║ ╚═╝ ██║╚██████╔╝██║  ██║
  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝
 BANNER
-printf "${R}\n  ${DIM}Установка стека v3.0.6${R}\n\n"
+printf "${R}\n  ${DIM}Установка стека v3.0.7${R}\n\n"
 
 # ══════════════════════════════════════════════════════════════
 # ОБНАРУЖЕНИЕ СУЩЕСТВУЮЩЕЙ УСТАНОВКИ
@@ -506,10 +506,17 @@ NGINX_REPO
     spin_stop
     ok "nginx $(nginx -v 2>&1 | grep -oP '[\d.]+'): обновлён из nginx.org"
 }
-_ensure_nginx_official
+if [[ "$NGINX_NEEDED" == "true" ]]; then
+    _ensure_nginx_official
+fi
 
-PKGS=(certbot python3-certbot-nginx curl jq openssl
-      qrencode python3 uuid-runtime unzip dnsutils ufw)
+# При xray-direct certbot не нужен (нет nginx, нет Let's Encrypt)
+if [[ "$NGINX_NEEDED" == "true" ]]; then
+    PKGS=(certbot python3-certbot-nginx curl jq openssl
+          qrencode python3 uuid-runtime unzip dnsutils ufw)
+else
+    PKGS=(curl jq openssl qrencode python3 uuid-runtime unzip dnsutils ufw)
+fi
 NEED=()
 for p in "${PKGS[@]}"; do dpkg -s "$p" &>/dev/null || NEED+=("$p"); done
 

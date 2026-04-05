@@ -1,9 +1,20 @@
-# Changelog
+## [3.0.7] — 2026-04-05
 
-> Все значимые изменения документируются здесь.  
-> Формат: [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/)
+### 🔴 Исправлено
+
+**`scripts/install.sh` — nginx и certbot устанавливались при выборе режима `xray-direct`**
+
+`_ensure_nginx_official` и список пакетов `PKGS` с `certbot` вызывались
+безусловно. При варианте 3 («Только Xray напрямую») флаг `NGINX_NEEDED=false`
+устанавливался, но нигде не проверялся на шаге зависимостей.
+
+Исправлено: `_ensure_nginx_official` и `certbot/python3-certbot-nginx`
+обёрнуты в `[[ "$NGINX_NEEDED" == "true" ]]`. В режиме `xray-direct`
+устанавливается только минимальный набор: `curl jq openssl qrencode python3
+uuid-runtime unzip dnsutils ufw`.
 
 ---
+
 
 ## [3.0.6] — 2026-04-05
 
@@ -31,6 +42,13 @@
 
 ---
 
+
+# Changelog
+
+> Все значимые изменения документируются здесь.  
+> Формат: [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/)
+
+---
 
 ## [3.0.5] — 2026-04-05
 
