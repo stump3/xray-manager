@@ -95,91 +95,131 @@ xray_api_del_user() {
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  NGINX HELPERS — динамическое добавление location-блоков в vpn.conf
+#  NGINX HELPERS
 # ──────────────────────────────────────────────────────────────────────────────
 
 NGINX_VHOST="/etc/nginx/sites-available/vpn.conf"
+NGINX_MARKER="# XRAY_LOCATIONS_PLACEHOLDER"
 
-# Проверить: nginx есть и vhost существует
+# Проверить: nginx доступен и vhost установлен
 nginx_ok() {
     command -v nginx &>/dev/null && [[ -f "$NGINX_VHOST" ]]
 }
 
-# Атомарно вставить/заменить location-блок в HTTPS server {}
-# Аргументы: $1=location-path (напр. /ws), $2=полный текст блока (многострочный)
-_nginx_upsert_location() {
-    local loc_path="$1" block="$2"
-    local backup="${NGINX_VHOST}.bak.$$"
-    cp "$NGINX_VHOST" "$backup"
+# Получить домен из vhost (для display в summary)
+nginx_domain() {
+    grep -oP 'server_name\s+\K\S+' "$NGINX_VHOST" 2>/dev/null \
+        | grep -v '_' | head -1
+}
 
-    python3 - "$NGINX_VHOST" "$loc_path" "$block" << 'PYEOF'
-import sys, re
+# Атомарно вставить/заменить именованный блок location в vhost
+# $1 = уникальный id блока  (напр. "ws-10001")
+# $2 = полный текст блока
+_nginx_upsert_block() {
+    local id="$1" block="$2"
+    local bak="${NGINX_VHOST}.bak.$$"
+    cp "$NGINX_VHOST" "$bak"
 
-path_file, loc_path, block = sys.argv[1], sys.argv[2], sys.argv[3]
-text = open(path_file).read()
+    # Удалить старый блок с этим id (между BEGIN:id и END:id)
+    perl -i -0777 -pe \
+        "s/\n    # BEGIN:${id}\n.*?# END:${id}//gs" \
+        "$NGINX_VHOST" 2>/dev/null || {
+        # fallback без perl — используем sed
+        sed -i "/# BEGIN:${id}$/,/# END:${id}$/d" "$NGINX_VHOST"
+    }
 
-# Удалить существующий location с этим path (если есть)
-pat = re.compile(
-    r'\n[ \t]*location[ \t]+' + re.escape(loc_path) + r'[ \t]*\{[^}]*\}',
-    re.DOTALL
-)
-text = pat.sub('', text)
-
-# Найти последний } HTTPS server-блока (listen ... ssl) и вставить перед ним
-https_block = re.search(r'(listen\s+\d+\s+ssl.*?)(}[ \t]*\n?$)', text, re.DOTALL)
-if not https_block:
-    print("NGINX_UPSERT_ERROR: HTTPS server block not found", file=sys.stderr)
-    sys.exit(1)
-
-insert_pos = text.rfind('\n}')
-if insert_pos == -1:
-    sys.exit(1)
-
-text = text[:insert_pos] + '\n' + block + '\n}' + text[insert_pos+2:]
-open(path_file, 'w').write(text)
-PYEOF
-
-    local rc=$?
-    if [[ $rc -ne 0 ]]; then
-        cp "$backup" "$NGINX_VHOST"
-        rm -f "$backup"
-        warn "nginx_upsert_location: python patch failed, rollback applied"
-        return 1
+    # Вставить новый блок перед маркером
+    local tagged
+    tagged="    # BEGIN:${id}"$'\n'"${block}"$'\n'"    # END:${id}"
+    if grep -qF "$NGINX_MARKER" "$NGINX_VHOST"; then
+        # sed multiline insert перед маркером
+        python3 -c "
+import sys
+text = open('$NGINX_VHOST').read()
+block = open('/dev/stdin').read()
+marker = '$NGINX_MARKER'
+text = text.replace(marker, block + '\n    ' + marker)
+open('$NGINX_VHOST', 'w').write(text)
+" <<< "$tagged"
+    else
+        # fallback: добавить перед последней }
+        sed -i "\$i\\${tagged}" "$NGINX_VHOST"
     fi
 
-    if ! nginx -t 2>/dev/null; then
-        cp "$backup" "$NGINX_VHOST"
-        rm -f "$backup"
-        warn "nginx -t: конфиг невалиден после патча, выполнен rollback"
+    if nginx -t 2>/dev/null; then
+        rm -f "$bak"
+        nginx -s reload 2>/dev/null || systemctl reload nginx 2>/dev/null || true
+        return 0
+    else
+        cp "$bak" "$NGINX_VHOST"
+        rm -f "$bak"
+        warn "nginx -t провален — откат конфига"
         return 1
     fi
-
-    rm -f "$backup"
-    nginx -s reload 2>/dev/null || systemctl reload nginx 2>/dev/null || true
-    return 0
 }
 
 # Добавить WebSocket / HTTPUpgrade location в nginx vhost
-# Аргументы: $1=path (напр. /vless), $2=port (напр. 10001)
+# $1=path (напр. /vless)  $2=port (напр. 10001)
 nginx_add_ws_location() {
     local path_v="$1" port="$2"
-    nginx_ok || return 0
+    nginx_ok || { warn "nginx vhost не найден — location /не/ добавлен"; return 0; }
     local block
-    block=$(printf '    location %s {\n        proxy_pass          http://127.0.0.1:%s;\n        proxy_http_version  1.1;\n        proxy_set_header    Upgrade    $http_upgrade;\n        proxy_set_header    Connection "upgrade";\n        proxy_set_header    Host       $host;\n        proxy_set_header    X-Real-IP  $remote_addr;\n        proxy_read_timeout  86400s;\n        proxy_send_timeout  86400s;\n    }' "$path_v" "$port")
-    _nginx_upsert_location "$path_v" "$block" \
-        && ok "nginx: location ${path_v} → 127.0.0.1:${port} добавлен" \
-        || warn "nginx location не обновлён — добавьте вручную: proxy_pass http://127.0.0.1:${port};"
+    # if ($http_upgrade != websocket) — защита от случайных HTTP-запросов
+    printf -v block \
+'    location %s {
+        if ($http_upgrade != "websocket") { return 404; }
+        proxy_pass         http://127.0.0.1:%s;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade    $http_upgrade;
+        proxy_set_header   Connection "upgrade";
+        proxy_set_header   Host       $host;
+        proxy_set_header   X-Real-IP  $remote_addr;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }' "$path_v" "$port"
+    if _nginx_upsert_block "ws-${port}" "$block"; then
+        ok "nginx: location ${path_v} → 127.0.0.1:${port}"
+    else
+        warn "nginx location не добавлен — добавьте вручную:\n  proxy_pass http://127.0.0.1:${port};"
+    fi
 }
 
 # Добавить gRPC location в nginx vhost
-# Аргументы: $1=serviceName (напр. xray), $2=port (напр. 10003)
+# $1=serviceName (напр. xray)  $2=port (напр. 10003)
 nginx_add_grpc_location() {
     local svc="$1" port="$2"
-    nginx_ok || return 0
-    local loc_path="/${svc}"
+    nginx_ok || { warn "nginx vhost не найден — location /не/ добавлен"; return 0; }
     local block
-    block=$(printf '    location %s {\n        grpc_pass grpc://127.0.0.1:%s;\n        grpc_set_header Host $host;\n    }' "$loc_path" "$port")
-    _nginx_upsert_location "$loc_path" "$block" \
-        && ok "nginx: gRPC location ${loc_path} → 127.0.0.1:${port} добавлен" \
-        || warn "nginx gRPC location не обновлён — добавьте вручную: grpc_pass grpc://127.0.0.1:${port};"
+    printf -v block \
+'    location /%s {
+        grpc_pass      grpc://127.0.0.1:%s;
+        grpc_set_header Host $host;
+    }' "$svc" "$port"
+    if _nginx_upsert_block "grpc-${port}" "$block"; then
+        ok "nginx: gRPC /${svc} → 127.0.0.1:${port}"
+    else
+        warn "nginx gRPC location не добавлен — добавьте вручную:\n  grpc_pass grpc://127.0.0.1:${port};"
+    fi
+}
+
+# Удалить location-блок из vhost по порту (при удалении протокола)
+# $1=type ("ws" или "grpc")  $2=port
+nginx_del_location() {
+    local type="$1" port="$2"
+    nginx_ok || return 0
+    local id="${type}-${port}"
+    local bak="${NGINX_VHOST}.bak.$$"
+    cp "$NGINX_VHOST" "$bak"
+    perl -i -0777 -pe \
+        "s/\n    # BEGIN:${id}\n.*?# END:${id}//gs" \
+        "$NGINX_VHOST" 2>/dev/null || \
+    sed -i "/# BEGIN:${id}$/,/# END:${id}$/d" "$NGINX_VHOST"
+    if nginx -t 2>/dev/null; then
+        rm -f "$bak"
+        nginx -s reload 2>/dev/null || systemctl reload nginx 2>/dev/null || true
+        ok "nginx: location ${id} удалён"
+    else
+        cp "$bak" "$NGINX_VHOST"; rm -f "$bak"
+        warn "nginx -t провален после удаления location — откат"
+    fi
 }

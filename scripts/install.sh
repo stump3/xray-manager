@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════
-#  Xray Manager — интерактивная установка v3.0.3
+#  Xray Manager — интерактивная установка v2.9.1
 #  Запуск: sudo bash scripts/install.sh
 # ══════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -195,7 +195,7 @@ cat << 'BANNER'
  ██╔╝ ██╗██║  ██║██║  ██║   ██║       ██║ ╚═╝ ██║╚██████╔╝██║  ██║
  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝
 BANNER
-printf "${R}\n  ${DIM}Установка стека v3.0.3${R}\n\n"
+printf "${R}\n  ${DIM}Установка стека v3.0.2${R}\n\n"
 
 # ══════════════════════════════════════════════════════════════
 # ОБНАРУЖЕНИЕ СУЩЕСТВУЮЩЕЙ УСТАНОВКИ
@@ -370,47 +370,63 @@ while [[ -z "$DOMAIN" ]]; do warn "Домен обязателен"; ask_val "Д
 ask_val "Email для Let's Encrypt" LE_EMAIL ""
 while [[ -z "$LE_EMAIL" ]]; do warn "Email обязателен"; ask_val "Email" LE_EMAIL ""; done
 
-ask_val "Порт VLESS+WebSocket (внутренний, Nginx → Xray)" WS_PORT "10001"
-ask_val "Порт VLESS+REALITY (напрямую, без Nginx)" REALITY_PORT "8443"
+# ── Архитектура nginx ↔ Xray ─────────────────────────────────
+echo ""
+printf "  ${CYAN}${BOLD}Выбери архитектуру nginx ↔ Xray:${R}\n\n"
+printf "  ${CYAN}1)${R} ${BOLD}Nginx stream + Reality${R} ${DIM}(рекомендуется)${R}\n"
+printf "     443 → SNI → домен → nginx(4443) | чужой сайт → Xray(18443)\n"
+printf "     Reality и WS/gRPC работают вместе на одном порту\n\n"
+printf "  ${CYAN}2)${R} ${BOLD}Только nginx HTTPS${R}\n"
+printf "     nginx:443 → proxy_pass → Xray(loopback)\n"
+printf "     Только WS/gRPC/HTTPUpgrade. Reality — на отдельном порту\n\n"
+printf "  ${CYAN}3)${R} ${BOLD}Только Xray напрямую${R}\n"
+printf "     Xray слушает :443 сам, nginx не нужен\n"
+printf "     Только Reality-протоколы (VLESS+REALITY, gRPC+REALITY)\n\n"
+printf " ${YELLOW}?${R} Вариант [1]: "
+read -r _arch_choice
 
-# ── Конфликт 443 ─────────────────────────────────────────────
 USE_STREAM=false
+NGINX_NEEDED=true
 NGINX_PORT=443
+REALITY_PORT=443
 
-if [[ "$REALITY_PORT" == "443" ]]; then
-    echo ""
-    warn "Порт 443 выбран для REALITY, но его же использует Nginx (HTTPS)."
-    echo ""
-    printf "  ${CYAN}1)${R} Nginx stream — SNI-маршрутизация на 443 ${DIM}(рекомендуется)${R}\n"
-    printf "     REALITY-трафик → Xray, HTTPS → Nginx(4443)\n"
-    printf "  ${CYAN}2)${R} Перевести REALITY на другой порт (напр. 8443)\n"
-    echo ""
-    printf " ${CYAN}?${R} Выбери вариант [1/2]: "
-    read -r stream_choice
-    if [[ "${stream_choice:-1}" == "2" ]]; then
-        ask_val "Порт для REALITY" REALITY_PORT "8443"
-        USE_STREAM=false; NGINX_PORT=443
-    else
-        USE_STREAM=true; NGINX_PORT=4443
-        info "Nginx → 4443, nginx stream → 443 (SNI-маршрутизация)"
-    fi
-fi
-
-SUB_TOKEN=$(openssl rand -hex 16)
+case "${_arch_choice:-1}" in
+    2)
+        ARCH_MODE="nginx-only"
+        NGINX_PORT=443
+        REALITY_PORT=8443
+        info "Режим: nginx HTTPS на 443, Reality на ${REALITY_PORT}"
+        ;;
+    3)
+        ARCH_MODE="xray-direct"
+        NGINX_NEEDED=false
+        REALITY_PORT=443
+        info "Режим: Xray напрямую на 443, nginx не используется"
+        ;;
+    *)
+        ARCH_MODE="stream"
+        USE_STREAM=true
+        NGINX_PORT=4443
+        REALITY_PORT=443
+        info "Режим: nginx stream на 443, Xray Reality на 18443"
+        ;;
+esac
 
 echo ""
 echo "  ─────────────────────────────────────"
 printf "   Домен:        ${CYAN}%s${R}\n"   "$DOMAIN"
 printf "   Email:        ${CYAN}%s${R}\n"   "$LE_EMAIL"
-printf "   WS порт:      ${YELLOW}%s${R}\n"  "$WS_PORT"
-if $USE_STREAM; then
-    _summary_xray_port="$REALITY_PORT"; [[ "$REALITY_PORT" == "443" ]] && _summary_xray_port="18443"
-    printf "   REALITY порт: ${YELLOW}%s${R} ${DIM}(stream → Xray inbound: %s)${R}\n" "$REALITY_PORT" "$_summary_xray_port"
-    printf "   Nginx порт:   ${YELLOW}4443${R} ${DIM}(за stream 443)${R}\n"
+printf "   Архитектура:  ${YELLOW}%s${R}\n" "$ARCH_MODE"
+if [[ "$ARCH_MODE" == "stream" ]]; then
+    printf "   nginx:        ${YELLOW}4443${R} ${DIM}(за stream 443)${R}\n"
+    printf "   Xray Reality: ${YELLOW}18443${R} ${DIM}(внутренний)${R}\n"
+elif [[ "$ARCH_MODE" == "nginx-only" ]]; then
+    printf "   nginx:        ${YELLOW}443${R}\n"
+    printf "   Reality порт: ${YELLOW}%s${R}\n" "$REALITY_PORT"
 else
-    printf "   REALITY порт: ${YELLOW}%s${R}\n" "$REALITY_PORT"
+    printf "   Xray порт:    ${YELLOW}443${R} ${DIM}(напрямую)${R}\n"
 fi
-printf "   SUB_TOKEN:    ${DIM}%s${R}\n"    "$SUB_TOKEN"
+printf "   SUB_TOKEN:    ${DIM}%s${R}\n" "$SUB_TOKEN"
 echo "  ─────────────────────────────────────"
 echo ""
 printf " ${YELLOW}?${R} Всё верно? [Y/n]: "
@@ -681,8 +697,7 @@ HOOK_DST="/etc/letsencrypt/renewal-hooks/deploy/reload-services.sh"
 [[ -f "$HOOK_SRC" ]] && { cp "$HOOK_SRC" "$HOOK_DST"; chmod +x "$HOOK_DST"; }
 
 # ── Основной nginx vhost ──────────────────────────────────────
-# nginx.conf уже установлен в шаге 3 (до ACME) — stream.d тоже создан там.
-# Здесь только убеждаемся что stream.d есть (на случай re-run без шага 3).
+if [[ "$ARCH_MODE" != "xray-direct" ]]; then
 mkdir -p /etc/nginx/stream.d
 
 VHOST_SRC="${REPO_DIR}/nginx/sites/vpn.conf"
@@ -697,7 +712,6 @@ fi
 sed \
     -e "s|DOMAIN|${DOMAIN}|g" \
     -e "s|SUB_TOKEN|${SUB_TOKEN}|g" \
-    -e "s|WS_PORT|${WS_PORT}|g" \
     -e "s|NGINX_PORT|${NGINX_PORT}|g" \
     -e "s|HTTP2_DIRECTIVE|${H2_LISTEN}|g" \
     "$VHOST_SRC" > "$VHOST_DST"
@@ -757,6 +771,7 @@ systemctl restart nginx || {
     err "nginx не запустился:"; journalctl -u nginx -n 10 --no-pager >&2; exit 1
 }
 ok "Nginx настроен (порт ${NGINX_PORT})"
+fi # end if ARCH_MODE != xray-direct
 
 # ══════════════════════════════════════════════════════════════
 step 5 "Xray-core"
@@ -793,7 +808,7 @@ step 7 "Сохранение параметров"
 cat > /root/.xray-mgr-install << PARAMS
 DOMAIN="${DOMAIN}"
 LE_EMAIL="${LE_EMAIL}"
-WS_PORT="${WS_PORT}"
+ARCH_MODE="${ARCH_MODE}"
 REALITY_PORT="${REALITY_PORT}"
 NGINX_PORT="${NGINX_PORT}"
 USE_STREAM="${USE_STREAM}"
