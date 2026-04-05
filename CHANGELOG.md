@@ -1,3 +1,68 @@
+## [3.0.3] — 2026-04-05
+
+### 🔴 Исправлено (критичные)
+
+**`scripts/install.sh` — `SUB_TOKEN: unbound variable` при выборе архитектуры**
+
+При рефакторинге блока параметров (введён выбор архитектуры nginx ↔ Xray)
+строка `SUB_TOKEN=$(openssl rand -hex 16)` была удалена из оригинального блока
+вместе с остальным кодом, но не добавлена в новый блок до сводки.
+Установщик падал с `line 429: SUB_TOKEN: unbound variable` сразу после
+подтверждения параметров.
+
+Исправлено: `SUB_TOKEN` генерируется явно перед выводом сводки.
+
+### ✨ Новое
+
+**`scripts/install.sh` — выбор архитектуры nginx ↔ Xray при установке**
+
+Вместо автоматического определения конфликта порта 443 пользователь явно
+выбирает один из трёх режимов:
+
+| # | Режим | Описание |
+|---|---|---|
+| 1 | `stream` | nginx stream на 443, SNI-routing: домен → nginx(4443), чужой сайт → Xray Reality(18443). Рекомендуется |
+| 2 | `nginx-only` | nginx HTTPS на 443, proxy_pass к Xray на loopback. WS/gRPC/HTTPUpgrade. Reality — на отдельном порту |
+| 3 | `xray-direct` | Xray слушает :443 напрямую, nginx не нужен. Только Reality-протоколы |
+
+Сохраняется в `/root/.xray-mgr-install` как `ARCH_MODE`.
+
+**`modules/08-protocols.sh` — полная переписка всех Xray-протоколов**
+
+Переписка на основе рабочих конфигов из xray-install и xray-examples.
+
+*Reality-протоколы (VLESS+REALITY, gRPC+REALITY, XHTTP+REALITY):*
+- `"network":"raw"` вместо `"tcp"` — корректное имя транспорта в Xray-core ≥ 24.x
+- `realitySettings.dest` вместо `realitySettings.target` — поле `target` молча игнорировалось ядром, camouflage forwarding не работал
+- `"shortIds": [$sid, ""]` — пустой shortId разрешает клиентов без shortId
+- `"flow":"xtls-rprx-vision"` обязателен для TCP/RAW, пустой для gRPC/XHTTP
+
+*nginx-proxied протоколы (WS, gRPC, HTTPUpgrade, VMess-WS):*
+- `"listen":"127.0.0.1"` — Xray не слушает на публичном интерфейсе
+- `"security":"none"` — TLS снят nginx до Xray; двойной TLS → рукопожатие падало
+- Убраны вопросы про cert/key/домен — сертификат принадлежит nginx
+- После `ib_add` автоматически вызывается `nginx_add_ws_location` / `nginx_add_grpc_location`
+
+**`modules/05-config.sh` — nginx-хелперы для динамического управления location-блоками**
+
+| Функция | Описание |
+|---|---|
+| `nginx_ok()` | Проверяет наличие nginx и vhost |
+| `nginx_domain()` | Читает домен из установленного vpn.conf |
+| `_nginx_upsert_block(id, block)` | Атомарно вставляет/заменяет именованный блок; при `nginx -t` failure — rollback из .bak |
+| `nginx_add_ws_location(path, port)` | WS/HTTPUpgrade proxy_pass блок |
+| `nginx_add_grpc_location(svc, port)` | gRPC grpc_pass блок |
+| `nginx_del_location(type, port)` | Удаляет location при удалении протокола |
+
+**`nginx/sites/vpn.conf` — убран хардкод WS location, добавлен плейсхолдер**
+
+Хардкод `location /ws { proxy_pass http://127.0.0.1:WS_PORT; }` удалён.
+Добавлен маркер `# XRAY_LOCATIONS_PLACEHOLDER` — location-блоки вставляются
+автоматически при добавлении протокола.
+
+---
+
+
 # Changelog
 
 > Все значимые изменения документируются здесь.  
