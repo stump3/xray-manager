@@ -5,6 +5,39 @@
 
 ---
 
+## [3.0.1] — 2026-04-05
+
+### 🔴 Исправлено (критичные)
+
+**`scripts/install.sh` — certbot HTTP-01 всегда падал при установке nginx из nginx.org**
+
+**Симптом:** certbot возвращал `Some challenges have failed`, диагностика показывала `✓ HTTP :80 доступен (статус 404)` — что маскировало реальную проблему.
+
+**Причина:** nginx.org при установке создаёт собственный `nginx.conf` с `include conf.d/*.conf` — без `sites-enabled/*`. Репозиторный `nginx.conf` (с обоими include) устанавливался только в шаге 5, **после** certbot в шаге 4. Поэтому `acme-temp.conf`, размещённый в `sites-enabled/`, nginx физически не загружал. Запросы на `/.well-known/acme-challenge/` обслуживал `conf.d/default.conf` от nginx.org, возвращая 404.
+
+**Исправление:**
+- Репозиторный `nginx.conf` устанавливается в **шаге 3** (до ACME), а не в шаге 5.
+- `conf.d/default.conf` и `sites-enabled/default` удаляются там же — перед первым `systemctl restart nginx`.
+- Создание `sites-available/`, `sites-enabled/`, `stream.d/`, `conf.d/` перенесено в шаг 3.
+- Блок в шаге 5, дублировавший установку `nginx.conf`, заменён однострочным `mkdir -p /etc/nginx/stream.d`.
+
+**`scripts/install.sh` — `load_module` для dynamic stream терялся при перезаписи `nginx.conf`**
+
+В шаге 1, при установке stream-модуля как dynamic `.so` (Ubuntu/Debian пакет), патч `load_module` добавлялся в `nginx.conf`. В шаге 3 `nginx.conf` перезаписывался репозиторным — патч терялся. nginx падал с `unknown directive "stream"` при следующем `nginx -t`.
+
+**Исправление:** блок `load_module` перенесён из шага 1 в шаг 3 — применяется **после** копирования репозиторного `nginx.conf`. Репозиторный конфиг уже содержит `include /etc/nginx/modules-enabled/*.conf`, который покрывает большинство дистрибутивов; `load_module` используется только как fallback для систем без `modules-enabled` symlink.
+
+**`scripts/install.sh` — `diagnose_certbot_failure` трактовала 404 на ACME path как успех**
+
+`/.well-known/acme-challenge/test` возвращал 404 → функция печатала `✓ HTTP :80 доступен` зелёным. Это скрывало именно ту проблему, которую диагностика должна была выявлять.
+
+**Исправление:** три ветки вместо двух:
+- `200` → `✓` webroot корректен
+- `404` → `⚠` nginx запущен, но ACME path не обслуживается — webroot не загружен + подсказка `nginx -T | grep include`
+- всё остальное → `✗` nginx не отвечает на порт 80
+
+---
+
 ## [3.0.0] — 2026-04-05
 
 ### ✨ Новое

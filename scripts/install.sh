@@ -76,16 +76,24 @@ diagnose_certbot_failure() {
         printf "  ${GREEN}✓${R} DNS: %s → %s (совпадает)\n" "$domain" "$domain_ip"
     fi
 
-    # Порт 80 доступен
+    # Порт 80 + ACME path
     local acme_check
-    acme_check=$(curl -4 -sIo /dev/null -w "%{http_code}"         --max-time 5 "http://${domain}/.well-known/acme-challenge/test" 2>/dev/null || echo "000")
-    if [[ "$acme_check" == "404" || "$acme_check" == "200" ]]; then
-        printf "  ${GREEN}✓${R} HTTP :80 доступен (статус %s)\n" "$acme_check"
+    acme_check=$(curl -4 -sIo /dev/null -w "%{http_code}" \
+        --max-time 5 "http://${domain}/.well-known/acme-challenge/test" 2>/dev/null || echo "000")
+    if [[ "$acme_check" == "200" ]]; then
+        printf "  ${GREEN}✓${R} HTTP :80 доступен, ACME path обслуживается (статус 200)\n"
+    elif [[ "$acme_check" == "404" ]]; then
+        # 404 означает: nginx запущен, но ACME-файл не найден — webroot не обслуживается.
+        # Типичная причина: nginx.conf не включает sites-enabled/*.
+        printf "  ${YELLOW}⚠${R}  HTTP :80: nginx отвечает, но ACME path вернул 404\n"
+        printf "     → nginx.conf не загружает sites-enabled/ или webroot неверный\n"
+        printf "     → Проверь: nginx -T | grep -E 'include|sites-enabled|well-known'\n"
     else
         printf "  ${RED}✗${R} HTTP :80 недоступен (статус %s)\n" "$acme_check"
         # Что слушает 80?
         local p80
-        p80=$(ss -tlnp 'sport = :80' 2>/dev/null             | awk 'NR>1{match($0,/users:\(\("([^"]+)/,a); print a[1]}' | head -1)
+        p80=$(ss -tlnp 'sport = :80' 2>/dev/null \
+            | awk 'NR>1{match($0,/users:\(\("([^"]+)/,a); print a[1]}' | head -1)
         if [[ -z "$p80" ]]; then
             printf "     → Порт 80 никто не слушает — nginx не запущен?\n"
             printf "     → systemctl restart nginx\n"
@@ -187,7 +195,7 @@ cat << 'BANNER'
  ██╔╝ ██╗██║  ██║██║  ██║   ██║       ██║ ╚═╝ ██║╚██████╔╝██║  ██║
  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝
 BANNER
-printf "${R}\n  ${DIM}Установка стека v3.0.0${R}\n\n"
+printf "${R}\n  ${DIM}Установка стека v3.0.1${R}\n\n"
 
 # ══════════════════════════════════════════════════════════════
 # ОБНАРУЖЕНИЕ СУЩЕСТВУЮЩЕЙ УСТАНОВКИ
@@ -527,25 +535,6 @@ if $USE_STREAM && ! _has_stream; then
         warn "  2) Выбери другой порт для REALITY (не 443)"
         exit 1
     fi
-
-    # Edge-case: модуль установлен как dynamic .so, но load_module не прописан
-    # (актуально для Ubuntu-пакетов, которые не добавляют conf.d/nginx-mod-stream.conf).
-    # nginx.org-пакет включает stream compiled-in — проверка не нужна.
-    if nginx -V 2>&1 | grep -q "with-stream"; then
-        : # compiled-in, load_module не требуется
-    elif ! nginx -T 2>/dev/null | grep -q "load_module.*stream"; then
-        # Ищем .so файл и добавляем load_module если его нет в nginx.conf
-        local _so
-        _so=$(find /usr/lib/nginx/modules /etc/nginx/modules -name "*mod-stream*.so"               -o -name "*ngx_stream_module*.so" 2>/dev/null | head -1)
-        if [[ -n "$_so" ]]; then
-            # Добавить load_module в начало nginx.conf если ещё не там
-            if ! grep -q "load_module.*${_so##*/}" /etc/nginx/nginx.conf 2>/dev/null; then
-                sed -i "1s|^|load_module ${_so};
-|" /etc/nginx/nginx.conf
-                info "Добавлен load_module ${_so##*/} в nginx.conf"
-            fi
-        fi
-    fi
 fi
 
 NGINX_MINOR=$(nginx -v 2>&1 | grep -oP '\d+\.\d+' | head -1 | cut -d. -f2 || echo 0)
@@ -568,6 +557,38 @@ rm -f /etc/nginx/conf.d/stream-443.conf   2>/dev/null || true
 rm -f /etc/nginx/stream.d/stream-443.conf 2>/dev/null || true
 rm -f /etc/nginx/sites-enabled/vpn.conf   2>/dev/null || true
 
+# ── Установить репозиторный nginx.conf ДО запуска для ACME ───────────────────
+# nginx.org при свежей установке пишет свой nginx.conf: include conf.d/*.conf
+# без sites-enabled/*. Репозиторный nginx.conf содержит оба include.
+# Если его не поставить здесь, acme-temp.conf в sites-enabled не будет загружен
+# nginx-ом, HTTP-01 challenge вернёт 404 и certbot упадёт.
+NGINX_CONF_SRC="${REPO_DIR}/nginx/nginx.conf"
+mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled \
+         /etc/nginx/stream.d /etc/nginx/conf.d
+if [[ -f "$NGINX_CONF_SRC" ]]; then
+    cp /etc/nginx/nginx.conf "/etc/nginx/nginx.conf.bak.$(date +%Y%m%d_%H%M%S)" 2>/dev/null || true
+    cp "$NGINX_CONF_SRC" /etc/nginx/nginx.conf
+fi
+# nginx.org ставит conf.d/default.conf на порту 80 — он перехватывает ACME-запросы
+rm -f /etc/nginx/conf.d/default.conf /etc/nginx/sites-enabled/default 2>/dev/null || true
+
+# Edge-case: dynamic stream .so установлен, но load_module не прописан ни в nginx.conf
+# ни в modules-enabled/. Проверяем и добавляем ПОСЛЕ копирования репозиторного nginx.conf,
+# чтобы патч не был потерян при перезаписи.
+if $USE_STREAM && ! nginx -V 2>&1 | grep -q "with-stream"; then
+    if ! nginx -T 2>/dev/null | grep -q "load_module.*stream"; then
+        local _so
+        _so=$(find /usr/lib/nginx/modules /etc/nginx/modules \
+            -name "*mod-stream*.so" -o -name "*ngx_stream_module*.so" 2>/dev/null | head -1)
+        if [[ -n "$_so" ]]; then
+            if ! grep -q "load_module.*${_so##*/}" /etc/nginx/nginx.conf 2>/dev/null; then
+                sed -i "1s|^|load_module ${_so};\n|" /etc/nginx/nginx.conf
+                info "Добавлен load_module ${_so##*/} в nginx.conf"
+            fi
+        fi
+    fi
+fi
+
 _port80_owner=$(ss -tlnp 'sport = :80' 2>/dev/null \
     | awk 'NR>1 && /LISTEN/{match($0,/users:\(\("([^"]+)/,a); print a[1]}' | head -1)
 if [[ -n "$_port80_owner" && "$_port80_owner" != "nginx" ]]; then
@@ -587,13 +608,8 @@ HTML
 cat > /etc/nginx/sites-available/acme-temp.conf << ACME_CONF
 server {
     listen 80;
-    listen [::]:80;
     server_name ${DOMAIN};
-    location ^~ /.well-known/acme-challenge/ {
-        alias /var/www/certbot/.well-known/acme-challenge/;
-        default_type text/plain;
-        try_files \$uri =404;
-    }
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
     location / { return 200 'OK'; add_header Content-Type text/plain; }
 }
 ACME_CONF
@@ -623,20 +639,6 @@ if [[ -n "$SERVER_IP" && -n "$DOMAIN_IP" && "$SERVER_IP" != "$DOMAIN_IP" ]]; the
     [[ "${dns_ok,,}" != "y" ]] && { err "Дождись обновления DNS"; exit 1; }
 fi
 
-# Проверка, что ACME webroot реально отдается извне
-mkdir -p /var/www/certbot/.well-known/acme-challenge
-ACME_PROBE="xray-acme-probe-$(openssl rand -hex 8)"
-ACME_PROBE_BODY="ok-${ACME_PROBE}"
-printf '%s\n' "$ACME_PROBE_BODY" > "/var/www/certbot/.well-known/acme-challenge/${ACME_PROBE}"
-ACME_HTTP_BODY=$(curl -4 -s --max-time 8 \
-    "http://${DOMAIN}/.well-known/acme-challenge/${ACME_PROBE}" || true)
-rm -f "/var/www/certbot/.well-known/acme-challenge/${ACME_PROBE}"
-if [[ "$ACME_HTTP_BODY" != "$ACME_PROBE_BODY" ]]; then
-    err "ACME webroot не отдается корректно (ожидали '${ACME_PROBE_BODY}', получили '${ACME_HTTP_BODY:-<empty>}')"
-    warn "Проверь DNS/прокси (Cloudflare должен быть DNS-only) и nginx location /.well-known/acme-challenge/"
-    exit 1
-fi
-
 if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
     info "Сертификат существует"
 else
@@ -659,16 +661,9 @@ HOOK_DST="/etc/letsencrypt/renewal-hooks/deploy/reload-services.sh"
 [[ -f "$HOOK_SRC" ]] && { cp "$HOOK_SRC" "$HOOK_DST"; chmod +x "$HOOK_DST"; }
 
 # ── Основной nginx vhost ──────────────────────────────────────
-NGINX_CONF_SRC="${REPO_DIR}/nginx/nginx.conf"
-# stream.d создаём безусловно — nginx.conf всегда содержит include для него
+# nginx.conf уже установлен в шаге 3 (до ACME) — stream.d тоже создан там.
+# Здесь только убеждаемся что stream.d есть (на случай re-run без шага 3).
 mkdir -p /etc/nginx/stream.d
-if [[ -f "$NGINX_CONF_SRC" ]]; then
-    if ! grep -q "stream.d" /etc/nginx/nginx.conf 2>/dev/null; then
-        cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.bak.$(date +%Y%m%d_%H%M%S)
-        cp "$NGINX_CONF_SRC" /etc/nginx/nginx.conf
-        info "nginx.conf обновлён (добавлена поддержка stream.d)"
-    fi
-fi
 
 VHOST_SRC="${REPO_DIR}/nginx/sites/vpn.conf"
 VHOST_DST="/etc/nginx/sites-available/vpn.conf"

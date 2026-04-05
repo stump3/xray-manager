@@ -5,6 +5,91 @@
 
 ---
 
+## [3.0.1] — 2026-04-05
+
+### 🔴 Исправлено (критичные)
+
+**`scripts/install.sh` — certbot HTTP-01 всегда падал при установке nginx из nginx.org**
+
+**Симптом:** certbot возвращал `Some challenges have failed`, диагностика показывала `✓ HTTP :80 доступен (статус 404)` — что маскировало реальную проблему.
+
+**Причина:** nginx.org при установке создаёт собственный `nginx.conf` с `include conf.d/*.conf` — без `sites-enabled/*`. Репозиторный `nginx.conf` (с обоими include) устанавливался только в шаге 5, **после** certbot в шаге 4. Поэтому `acme-temp.conf`, размещённый в `sites-enabled/`, nginx физически не загружал. Запросы на `/.well-known/acme-challenge/` обслуживал `conf.d/default.conf` от nginx.org, возвращая 404.
+
+**Исправление:**
+- Репозиторный `nginx.conf` устанавливается в **шаге 3** (до ACME), а не в шаге 5.
+- `conf.d/default.conf` и `sites-enabled/default` удаляются там же — перед первым `systemctl restart nginx`.
+- Создание `sites-available/`, `sites-enabled/`, `stream.d/`, `conf.d/` перенесено в шаг 3.
+- Блок в шаге 5, дублировавший установку `nginx.conf`, заменён однострочным `mkdir -p /etc/nginx/stream.d`.
+
+**`scripts/install.sh` — `load_module` для dynamic stream терялся при перезаписи `nginx.conf`**
+
+В шаге 1, при установке stream-модуля как dynamic `.so` (Ubuntu/Debian пакет), патч `load_module` добавлялся в `nginx.conf`. В шаге 3 `nginx.conf` перезаписывался репозиторным — патч терялся. nginx падал с `unknown directive "stream"` при следующем `nginx -t`.
+
+**Исправление:** блок `load_module` перенесён из шага 1 в шаг 3 — применяется **после** копирования репозиторного `nginx.conf`. Репозиторный конфиг уже содержит `include /etc/nginx/modules-enabled/*.conf`, который покрывает большинство дистрибутивов; `load_module` используется только как fallback для систем без `modules-enabled` symlink.
+
+**`scripts/install.sh` — `diagnose_certbot_failure` трактовала 404 на ACME path как успех**
+
+`/.well-known/acme-challenge/test` возвращал 404 → функция печатала `✓ HTTP :80 доступен` зелёным. Это скрывало именно ту проблему, которую диагностика должна была выявлять.
+
+**Исправление:** три ветки вместо двух:
+- `200` → `✓` webroot корректен
+- `404` → `⚠` nginx запущен, но ACME path не обслуживается — webroot не загружен + подсказка `nginx -T | grep include`
+- всё остальное → `✗` nginx не отвечает на порт 80
+
+---
+
+## [3.0.0] — 2026-04-05
+
+### ✨ Новое
+
+**`scripts/install.sh` — `diagnose_certbot_failure()`**  
+При провале `certbot certonly` (Some challenges have failed) вместо сырого traceback выводится структурированная диагностика: проверяются DNS A-запись, HTTP доступность `/.well-known/`, UFW, Cloudflare Proxy по диапазону IP, `nginx -t`. Для каждого провала — конкретная инструкция. В конце — 5 типовых сценариев и путь к `/var/log/letsencrypt/letsencrypt.log`.
+
+**`scripts/install.sh` — `--dry-run` режим (preflight без изменений)**  
+`sudo bash scripts/install.sh --dry-run` — выводит план установки без записи конфигов и изменения системы. Позволяет предвалидировать домен/порты/параметры до запуска.
+
+**`scripts/install.sh` — `load_module` edge-case для dynamic stream**  
+После установки stream-модуля проверяется что директива `load_module` присутствует в `nginx.conf`. На Ubuntu/Debian .so-файл устанавливается, но `load_module` может отсутствовать — это вызывает скрытый `nginx: [emerg] unknown directive "stream"` при первом тесте конфига. Если директива отсутствует, она добавляется автоматически.
+
+### 🟡 Улучшено
+
+**`scripts/install.sh` — многоступенчатый fallback stream-модуля**  
+Цепочка попыток: `nginx-module-stream` → `nginx-full` → `libnginx-mod-stream`. При неудаче всех трёх — явный `err` + `exit 1` с actionable подсказками вместо тихого падения.
+
+**`scripts/install.sh` — устойчивость nginx keyring**  
+`rm` старого keyring + `gpg --dearmor --yes` перед записью нового — устраняет сбои идемпотентности при повторном запуске.
+
+**`modules/02-ui.sh`, `modules/99-main.sh` — детерминированный `printf` для рамок**  
+`printf '%*s' "$i"` → `printf '%*s' "$i" ""` в отрисовке рамок/разделителей.
+
+**`modules/11-subscription.sh` — локализация переменных**  
+`local confirm` в `sub_toggle_autoupdate()` — устраняет утечку во внешнюю область видимости.
+
+### 📄 Документация
+
+`docs/CODE_AUDIT_REPORT.md`, `docs/DIFF_LINES_REPORT.md`, `docs/IMPROVEMENT_UNIFIED.md` — инженерная обратная связь по аудиту, line-level diff и roadmap улучшений.
+
+---
+
+## [2.9.1] — 2026-04-05
+
+### 🟡 Улучшено (стабильность install-flow)
+
+**`scripts/install.sh` — keyring nginx.org и stream-модуль стали надёжнее**  
+Добавлено удаление старого keyring + `gpg --dearmor --yes` перед записью нового — устраняет сбои при повторном запуске. Stream-модуль устанавливается по цепочке приоритетов: `nginx-module-stream` → `nginx-full` → `libnginx-mod-stream`; при неудаче выводится явный `err` и `exit 1` с подсказкой вместо тихого падения. Добавлено создание `sites-available` / `sites-enabled` до конфигурирования vhost.
+
+**`modules/02-ui.sh`, `modules/99-main.sh` — детерминированный `printf` для рамок**  
+`printf '%*s' "$i"` заменено на `printf '%*s' "$i" ""` в местах отрисовки рамок и разделителей — устраняет неоднозначность поведения printf в разных shell-окружениях.
+
+**`modules/11-subscription.sh` — локализация переменных в `sub_toggle_autoupdate()`**  
+Добавлен `local confirm` в обеих ветках функции — устраняет утечку переменной во внешнюю область видимости.
+
+### 📄 Документация
+
+Добавлены `docs/CODE_AUDIT_REPORT.md`, `docs/DIFF_LINES_REPORT.md`, `docs/IMPROVEMENT_UNIFIED.md` — инженерная обратная связь по аудиту, line-level diff и roadmap улучшений.
+
+---
+
 ## [2.9.1] — 2026-04-05
 
 ### 🔧 Исправлено
