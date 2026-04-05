@@ -196,7 +196,7 @@ cat << 'BANNER'
  ██╔╝ ██╗██║  ██║██║  ██║   ██║       ██║ ╚═╝ ██║╚██████╔╝██║  ██║
  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝
 BANNER
-printf "${R}\n  ${DIM}Установка стека v3.0.4${R}\n\n"
+printf "${R}\n  ${DIM}Установка стека v3.0.5${R}\n\n"
 
 # ══════════════════════════════════════════════════════════════
 # ОБНАРУЖЕНИЕ СУЩЕСТВУЮЩЕЙ УСТАНОВКИ
@@ -501,7 +501,9 @@ NGINX_REPO
     apt_update_quiet 2>/dev/null
     # Удаляем старый nginx перед установкой нового во избежание конфликтов
     dpkg -s nginx &>/dev/null && apt_remove_quiet nginx nginx-full nginx-extras 2>/dev/null || true
+    spin_start "apt-get install nginx"
     apt_install_quiet nginx
+    spin_stop
     ok "nginx $(nginx -v 2>&1 | grep -oP '[\d.]+'): обновлён из nginx.org"
 }
 _ensure_nginx_official

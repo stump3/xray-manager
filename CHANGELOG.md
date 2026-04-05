@@ -1,10 +1,15 @@
+## [3.0.5] — 2026-04-05
 
-# Changelog
+### 🔧 Исправлено
 
-> Все значимые изменения документируются здесь.  
-> Формат: [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/)
+**`scripts/install.sh` — nginx из nginx.org устанавливался без spinner**
+
+В `_ensure_nginx_official()` вызов `apt_install_quiet nginx` не был обёрнут
+в `spin_start/spin_stop` — вывод dpkg шёл прямо в терминал неприкрытым.
+Добавлен spinner `apt-get install nginx` вокруг установки.
 
 ---
+
 
 ## [3.0.4] — 2026-04-05
 
@@ -91,6 +96,14 @@
 Хардкод `location /ws { proxy_pass http://127.0.0.1:WS_PORT; }` удалён.
 Добавлен маркер `# XRAY_LOCATIONS_PLACEHOLDER` — location-блоки вставляются
 автоматически при добавлении протокола.
+
+---
+
+
+# Changelog
+
+> Все значимые изменения документируются здесь.  
+> Формат: [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/)
 
 ---
 
