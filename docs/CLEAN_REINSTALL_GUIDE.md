@@ -8,6 +8,7 @@
 ```bash
 sudo -i
 cd ~/xray-manager
+rm -rf /root/xray-manager
 ```
 
 ## 1) Самый простой путь (через меню xray-manager)
