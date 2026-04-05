@@ -1,9 +1,26 @@
-# Changelog
+## [3.0.4] — 2026-04-05
 
-> Все значимые изменения документируются здесь.  
-> Формат: [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/)
+### 🔧 Исправлено
+
+**`scripts/install.sh` — dpkg-прогресс пробивался сквозь spinner**
+
+`apt-get -qq` подавляет вывод apt, но не dpkg — он открывает псевдотерминал
+и пишет `Unpacking ...` / `Setting up ...` напрямую поверх spinner-строки.
+Добавлен флаг `-o Dpkg::Use-Pty=0` в `apt_install_quiet()`: запрещает dpkg
+открывать pty, весь вывод идёт только через apt-канал и подавляется `-qq`.
+
+Шаг 1 теперь выглядит как ожидается:
+```
+[1/7] Установка зависимостей
+ ✓ Индексы обновлены
+ ✓ nginx 1.29.7: обновлён из nginx.org
+ → Устанавливаем: certbot python3-certbot-nginx ...
+ ⠸ apt-get install...
+ ✓ [2/7] ...
+```
 
 ---
+
 
 ## [3.0.3] — 2026-04-05
 
@@ -66,6 +83,14 @@
 Хардкод `location /ws { proxy_pass http://127.0.0.1:WS_PORT; }` удалён.
 Добавлен маркер `# XRAY_LOCATIONS_PLACEHOLDER` — location-блоки вставляются
 автоматически при добавлении протокола.
+
+---
+
+
+# Changelog
+
+> Все значимые изменения документируются здесь.  
+> Формат: [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/)
 
 ---
 
