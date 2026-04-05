@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════
-#  Xray Manager — интерактивная установка v3.0.7
+#  Xray Manager — интерактивная установка v2.9.1
 #  Запуск: sudo bash scripts/install.sh
 # ══════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -196,7 +196,7 @@ cat << 'BANNER'
  ██╔╝ ██╗██║  ██║██║  ██║   ██║       ██║ ╚═╝ ██║╚██████╔╝██║  ██║
  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝
 BANNER
-printf "${R}\n  ${DIM}Установка стека v3.0.7${R}\n\n"
+printf "${R}\n  ${DIM}Установка стека v${MANAGER_VERSION}${R}\n\n"
 
 # ══════════════════════════════════════════════════════════════
 # ОБНАРУЖЕНИЕ СУЩЕСТВУЮЩЕЙ УСТАНОВКИ
@@ -581,7 +581,9 @@ ok "UFW настроен"
 # ══════════════════════════════════════════════════════════════
 step 3 "Настройка Nginx"
 
-rm -f /etc/nginx/conf.d/stream-443.conf   2>/dev/null || true
+if [[ "$NGINX_NEEDED" != "true" ]]; then
+    info "Режим xray-direct — nginx не нужен, шаг пропущен"
+else
 rm -f /etc/nginx/stream.d/stream-443.conf 2>/dev/null || true
 rm -f /etc/nginx/sites-enabled/vpn.conf   2>/dev/null || true
 
@@ -672,9 +674,14 @@ systemctl restart nginx || {
     err "nginx не запустился:"; journalctl -u nginx -n 20 --no-pager >&2; exit 1
 }
 ok "Nginx запущен (временный ACME-конфиг)"
+fi # end if NGINX_NEEDED
 
 # ══════════════════════════════════════════════════════════════
 step 4 "TLS-сертификат"
+
+if [[ "$NGINX_NEEDED" != "true" ]]; then
+    info "Режим xray-direct — TLS-сертификат не нужен, шаг пропущен"
+else
 
 spin_start "Проверка DNS"
 SERVER_IP=$(curl -4 -s --max-time 5 https://icanhazip.com 2>/dev/null || echo "")
@@ -784,6 +791,7 @@ systemctl restart nginx || {
 }
 ok "Nginx настроен (порт ${NGINX_PORT})"
 fi # end if ARCH_MODE != xray-direct
+fi # end if NGINX_NEEDED (step 4 certbot)
 
 # ══════════════════════════════════════════════════════════════
 step 5 "Xray-core"

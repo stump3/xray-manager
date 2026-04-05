@@ -41,7 +41,12 @@ ls:
 		awk '{printf "    %-32s %d lines\n", $$2, $$1}'
 	@echo "  TOTAL: $$(wc -l $(MODULES) | tail -1 | awk '{print $$1}') lines"
 
-## Удалить артефакты сборки
+## Синхронизировать version badge в README.md с MANAGER_VERSION
+version:
+	@sed -i "s|version-[0-9.]*-|version-$(VERSION)-|g" README.md
+	@echo "  VERSION README.md → v$(VERSION)"
+
+
 clean:
 	@rm -f $(OUT) $(OUT).sha256
 	@echo "  CLEAN  done"
