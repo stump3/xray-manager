@@ -380,8 +380,9 @@ _ensure_nginx_official() {
         warn "Продолжаем с системным nginx (без nginx.org)"
         return
     fi
+    rm -f /usr/share/keyrings/nginx-archive-keyring.gpg 2>/dev/null || true
     curl -fsSL https://nginx.org/keys/nginx_signing.key \
-        | gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg 2>/dev/null || {
+        | gpg --dearmor --yes -o /usr/share/keyrings/nginx-archive-keyring.gpg 2>/dev/null || {
         warn "Не удалось добавить ключ nginx.org — продолжаем с системным nginx"
         return
     }
@@ -431,9 +432,12 @@ if $USE_STREAM && ! nginx -V 2>&1 | grep -q "stream_module\|ngx_stream"; then
         spin_stop "ok"
     else
         spin_stop "err"
-        warn "Stream module не удалось установить — SNI-маршрутизация на 443 недоступна"
-        warn "Установите вручную: apt-get install nginx-full"
-        USE_STREAM=false
+        err "Stream module не удалось установить ни одним из методов."
+        err "SNI-маршрутизация REALITY+HTTPS на 443 невозможна."
+        warn "Варианты:"
+        warn "  1) apt-get install nginx-full"
+        warn "  2) Выбери другой порт для REALITY (не 443)"
+        exit 1
     fi
 fi
 
@@ -465,6 +469,7 @@ if [[ -n "$_port80_owner" && "$_port80_owner" != "nginx" ]]; then
 fi
 
 mkdir -p /var/www/html /var/www/certbot
+mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
 cat > /var/www/html/index.html << 'HTML'
 <!DOCTYPE html><html><head><meta charset="UTF-8"><title>OK</title>
 <style>body{margin:0;display:flex;align-items:center;justify-content:center;
