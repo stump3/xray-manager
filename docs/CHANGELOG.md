@@ -5,6 +5,30 @@
 
 ---
 
+## [3.0.2] — 2026-04-05
+
+### 🔴 Исправлено (критичные)
+
+**`scripts/install.sh` — `nginx -t` падал с "No such file or directory" для `nginx.conf`**
+
+На системах где nginx.org был установлен через `_ensure_nginx_official`, но `/etc/nginx/nginx.conf` по какой-либо причине отсутствовал (неполная установка, повторный запуск после сбоя, конфликт пакетов), `nginx -t` в шаге 3 завершался с:
+```
+nginx: [emerg] open() "/etc/nginx/nginx.conf" failed (2: No such file or directory)
+```
+
+**Три исправления:**
+- `mkdir -p /var/log/nginx /var/lib/nginx` до `nginx -t` — устраняет сопутствующую ошибку `error.log: No such file or directory`
+- Guard `[[ -f /etc/nginx/nginx.conf ]]` перед бэкапом — бэкап не падает если файла ещё нет
+- Fallback `elif [[ ! -f /etc/nginx/nginx.conf ]]` — если репозиторный `nginx.conf` недоступен (`REPO_DIR` некорректен) и системного тоже нет, генерируется минимальный валидный конфиг с `include sites-enabled/*` и `include conf.d/*.conf`
+
+**`modules/08-protocols.sh` — steal-yourself несовместим с nginx stream-режимом**
+
+В stream-режиме (REALITY + HTTPS на порту 443) SNI нашего домена маршрутизируется nginx → HTTPS backend (4443). `target = 127.0.0.1:${NGINX_PORT}` при таком SNI создавал замкнутый круг: Xray маскировался под наш домен, но сам пробрасывал трафик обратно в nginx, который его снова возвращал. Клиент не мог подключиться.
+
+Все три функции (`proto_vless_tcp_reality`, `proto_vless_xhttp_reality`, `proto_vless_grpc_reality`) возвращены к классическому внешнему `target = SNI:443`. Интерактивный выбор `_nginx_port`/`_domain` и smart-detect логика удалены.
+
+---
+
 ## [3.0.1] — 2026-04-05
 
 ### 🔴 Исправлено (критичные)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════
-#  Xray Manager — интерактивная установка v3.0.1
+#  Xray Manager — интерактивная установка v2.9.1
 #  Запуск: sudo bash scripts/install.sh
 # ══════════════════════════════════════════════════════════════
 set -euo pipefail
@@ -195,7 +195,7 @@ cat << 'BANNER'
  ██╔╝ ██╗██║  ██║██║  ██║   ██║       ██║ ╚═╝ ██║╚██████╔╝██║  ██║
  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝
 BANNER
-printf "${R}\n  ${DIM}Установка стека v3.0.1${R}\n\n"
+printf "${R}\n  ${DIM}Установка стека v3.0.2${R}\n\n"
 
 # ══════════════════════════════════════════════════════════════
 # ОБНАРУЖЕНИЕ СУЩЕСТВУЮЩЕЙ УСТАНОВКИ
@@ -564,10 +564,31 @@ rm -f /etc/nginx/sites-enabled/vpn.conf   2>/dev/null || true
 # nginx-ом, HTTP-01 challenge вернёт 404 и certbot упадёт.
 NGINX_CONF_SRC="${REPO_DIR}/nginx/nginx.conf"
 mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled \
-         /etc/nginx/stream.d /etc/nginx/conf.d
+         /etc/nginx/stream.d /etc/nginx/conf.d \
+         /var/log/nginx /var/lib/nginx
 if [[ -f "$NGINX_CONF_SRC" ]]; then
-    cp /etc/nginx/nginx.conf "/etc/nginx/nginx.conf.bak.$(date +%Y%m%d_%H%M%S)" 2>/dev/null || true
+    [[ -f /etc/nginx/nginx.conf ]] && \
+        cp /etc/nginx/nginx.conf "/etc/nginx/nginx.conf.bak.$(date +%Y%m%d_%H%M%S)" 2>/dev/null || true
     cp "$NGINX_CONF_SRC" /etc/nginx/nginx.conf
+elif [[ ! -f /etc/nginx/nginx.conf ]]; then
+    # Репозитория рядом нет и nginx.conf тоже — минимальный валидный конфиг
+    warn "nginx.conf не найден — создаём минимальный"
+    cat > /etc/nginx/nginx.conf << 'MINIMAL_CONF'
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+include /etc/nginx/modules-enabled/*.conf;
+events { worker_connections 1024; }
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    access_log /var/log/nginx/access.log;
+    error_log  /var/log/nginx/error.log warn;
+    include /etc/nginx/conf.d/*.conf;
+    include /etc/nginx/sites-enabled/*;
+}
+include /etc/nginx/stream.d/*.conf;
+MINIMAL_CONF
 fi
 # nginx.org ставит conf.d/default.conf на порту 80 — он перехватывает ACME-запросы
 rm -f /etc/nginx/conf.d/default.conf /etc/nginx/sites-enabled/default 2>/dev/null || true
@@ -597,7 +618,6 @@ if [[ -n "$_port80_owner" && "$_port80_owner" != "nginx" ]]; then
 fi
 
 mkdir -p /var/www/html /var/www/certbot
-mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
 cat > /var/www/html/index.html << 'HTML'
 <!DOCTYPE html><html><head><meta charset="UTF-8"><title>OK</title>
 <style>body{margin:0;display:flex;align-items:center;justify-content:center;

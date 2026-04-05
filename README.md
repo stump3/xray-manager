@@ -3,7 +3,7 @@
 Bash-инструмент для управления VPN-сервером на базе Xray-core.  
 Поддерживает VLESS, VMess, Trojan, Shadowsocks 2022, Hysteria2 и MTProto из единого интерактивного меню.
 
-![Version](https://img.shields.io/badge/version-3.0.1-0ea5e9?style=flat-square)
+![Version](https://img.shields.io/badge/version-2.9.1-0ea5e9?style=flat-square)
 ![Platform](https://img.shields.io/badge/Ubuntu_22%2B_%7C_Debian_11%2B-orange?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)
 

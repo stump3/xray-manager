@@ -7,12 +7,8 @@ proto_vless_tcp_reality() {
     box_blank
     xray_ok || { box_row "  ${RED}Установите ядро Xray!${R}"; box_end; pause; return; }
     local port sni tag
-    local _stream_port="" _nginx_port="" _domain=""
+    local _stream_port=""
     [[ -f /root/.xray-reality-local-port ]] && _stream_port=$(cat /root/.xray-reality-local-port)
-    if [[ -f /root/.xray-mgr-install ]]; then
-        _nginx_port=$(grep -oP '^NGINX_PORT="\K[^"]+' /root/.xray-mgr-install 2>/dev/null || true)
-        _domain=$(grep -oP '^DOMAIN="\K[^"]+' /root/.xray-mgr-install 2>/dev/null || true)
-    fi
 
     if [[ -n "$_stream_port" ]]; then
         port="$_stream_port"
@@ -23,35 +19,11 @@ proto_vless_tcp_reality() {
         ask "Порт (Xray inbound)" port "443"
     fi
 
-    # Steal yourself: SNI = наш домен, target = наш nginx (127.0.0.1:NGINX_PORT)
-    # Xray форвардит зондировщиков на наш же сайт → идеальная маскировка
-    local _sni_default="www.microsoft.com" _target_default=""
-    if [[ -n "$_nginx_port" && -n "$_domain" ]]; then
-        _sni_default="$_domain"
-        _target_default="127.0.0.1:${_nginx_port}"
-        box_row "  ${GREEN}✓ Steal yourself доступен — target = ваш nginx (${_target_default})${R}"
-        box_row "  ${DIM}SNI = ваш домен, зондировщики получают ваш LE-сертификат${R}"
-        box_blank
-    fi
-
-    ask "SNI (камуфляжный домен)" sni "${_sni_default}"
-
-    # target: если SNI == наш домен → steal yourself, иначе → внешний домен:443
-    local _target
-    if [[ "$sni" == "$_domain" && -n "$_nginx_port" ]]; then
-        _target="127.0.0.1:${_nginx_port}"
-        # BUG-5: steal-yourself — проверяем что nginx реально слушает целевой порт
-        # Если nginx не запущен, конфиг запишется, но клиенты не смогут подключиться
-        if ! ss -tlnp 2>/dev/null | grep -qP "127\.0\.0\.1:${_nginx_port}\b|0\.0\.0\.0:${_nginx_port}\b"; then
-            warn "nginx не слушает на 127.0.0.1:${_nginx_port} (steal yourself)"
-            warn "Xray будет перенаправлять TLS на несуществующий backend"
-            printf " ${YELLOW}?${R} Продолжить всё равно? [y/N]: "
-            local _cont; read -r _cont < /dev/tty
-            [[ "${_cont,,}" != "y" ]] && { pause; return; }
-        fi
-    else
-        _target="${sni}:443"
-    fi
+    # Steal yourself несовместим с nginx stream-режимом:
+    # SNI нашего домена уходит в nginx (→4443), Xray его не видит.
+    # В stream-режиме всегда используем внешний camouflage target.
+    ask "SNI (камуфляжный домен)" sni "www.microsoft.com"
+    local _target="${sni}:443"
     ask "Тег (уникальный ID)" tag "vless-reality"
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
     port_check "$port" || { pause; return; }
@@ -102,23 +74,13 @@ proto_vless_xhttp_reality() {
     box_blank
     xray_ok || { box_row "  ${RED}Установите ядро Xray!${R}"; box_end; pause; return; }
     local port sni path_v tag mode_v
-    local _stream_port="" _nginx_port="" _domain=""
+    local _stream_port=""
     [[ -f /root/.xray-reality-local-port ]] && _stream_port=$(cat /root/.xray-reality-local-port)
-    if [[ -f /root/.xray-mgr-install ]]; then
-        _nginx_port=$(grep -oP '^NGINX_PORT="\K[^"]+' /root/.xray-mgr-install 2>/dev/null || true)
-        _domain=$(grep -oP '^DOMAIN="\K[^"]+' /root/.xray-mgr-install 2>/dev/null || true)
-    fi
     [[ -n "$_stream_port" ]] && {
         box_row "  ${YELLOW}ℹ Nginx stream — Xray слушает на 127.0.0.1:${_stream_port}${R}"; box_blank; }
-    local _sni_default="www.microsoft.com"
-    if [[ -n "$_nginx_port" && -n "$_domain" ]]; then
-        _sni_default="$_domain"
-        box_row "  ${GREEN}✓ Steal yourself — target = ваш nginx (127.0.0.1:${_nginx_port})${R}"; box_blank
-    fi
     ask "Порт" port "${_stream_port:-443}"
-    ask "SNI" sni "$_sni_default"
-    local _target; [[ "$sni" == "$_domain" && -n "$_nginx_port" ]] \
-        && _target="127.0.0.1:${_nginx_port}" || _target="${sni}:443"
+    ask "SNI" sni "www.microsoft.com"
+    local _target="${sni}:443"
     ask "Path" path_v "/"
     ask "Режим (auto/packet-up/stream-up/stream-one)" mode_v "auto"
     ask "Тег" tag "vless-xhttp"
@@ -1076,23 +1038,13 @@ proto_vless_grpc_reality() {
     box_blank
     xray_ok || { box_row "  ${RED}Установите ядро Xray!${R}"; box_end; pause; return; }
     local port sni svc tag
-    local _stream_port="" _nginx_port="" _domain=""
+    local _stream_port=""
     [[ -f /root/.xray-reality-local-port ]] && _stream_port=$(cat /root/.xray-reality-local-port)
-    if [[ -f /root/.xray-mgr-install ]]; then
-        _nginx_port=$(grep -oP '^NGINX_PORT="\K[^"]+' /root/.xray-mgr-install 2>/dev/null || true)
-        _domain=$(grep -oP '^DOMAIN="\K[^"]+' /root/.xray-mgr-install 2>/dev/null || true)
-    fi
     [[ -n "$_stream_port" ]] && {
         box_row "  ${YELLOW}ℹ Nginx stream — Xray слушает на 127.0.0.1:${_stream_port}${R}"; box_blank; }
-    local _sni_default="www.yahoo.com"
-    if [[ -n "$_nginx_port" && -n "$_domain" ]]; then
-        _sni_default="$_domain"
-        box_row "  ${GREEN}✓ Steal yourself — target = ваш nginx (127.0.0.1:${_nginx_port})${R}"; box_blank
-    fi
     ask "Порт" port "${_stream_port:-443}"
-    ask "SNI (камуфляжный домен)" sni "$_sni_default"
-    local _target; [[ "$sni" == "$_domain" && -n "$_nginx_port" ]] \
-        && _target="127.0.0.1:${_nginx_port}" || _target="${sni}:443"
+    ask "SNI (камуфляжный домен)" sni "www.yahoo.com"
+    local _target="${sni}:443"
     ask "gRPC ServiceName" svc "grpc"
     ask "Тег" tag "vless-grpc-reality"
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
