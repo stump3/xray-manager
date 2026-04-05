@@ -587,8 +587,13 @@ HTML
 cat > /etc/nginx/sites-available/acme-temp.conf << ACME_CONF
 server {
     listen 80;
+    listen [::]:80;
     server_name ${DOMAIN};
-    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location ^~ /.well-known/acme-challenge/ {
+        alias /var/www/certbot/.well-known/acme-challenge/;
+        default_type text/plain;
+        try_files \$uri =404;
+    }
     location / { return 200 'OK'; add_header Content-Type text/plain; }
 }
 ACME_CONF
@@ -616,6 +621,20 @@ if [[ -n "$SERVER_IP" && -n "$DOMAIN_IP" && "$SERVER_IP" != "$DOMAIN_IP" ]]; the
     warn "DNS: A-запись ${DOMAIN} → ${DOMAIN_IP}, IP сервера → ${SERVER_IP}"
     printf " ${YELLOW}?${R} Продолжить? [y/N]: "; read -r dns_ok
     [[ "${dns_ok,,}" != "y" ]] && { err "Дождись обновления DNS"; exit 1; }
+fi
+
+# Проверка, что ACME webroot реально отдается извне
+mkdir -p /var/www/certbot/.well-known/acme-challenge
+ACME_PROBE="xray-acme-probe-$(openssl rand -hex 8)"
+ACME_PROBE_BODY="ok-${ACME_PROBE}"
+printf '%s\n' "$ACME_PROBE_BODY" > "/var/www/certbot/.well-known/acme-challenge/${ACME_PROBE}"
+ACME_HTTP_BODY=$(curl -4 -s --max-time 8 \
+    "http://${DOMAIN}/.well-known/acme-challenge/${ACME_PROBE}" || true)
+rm -f "/var/www/certbot/.well-known/acme-challenge/${ACME_PROBE}"
+if [[ "$ACME_HTTP_BODY" != "$ACME_PROBE_BODY" ]]; then
+    err "ACME webroot не отдается корректно (ожидали '${ACME_PROBE_BODY}', получили '${ACME_HTTP_BODY:-<empty>}')"
+    warn "Проверь DNS/прокси (Cloudflare должен быть DNS-only) и nginx location /.well-known/acme-challenge/"
+    exit 1
 fi
 
 if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
