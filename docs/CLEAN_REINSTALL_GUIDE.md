@@ -108,6 +108,21 @@ rm -rf /etc/letsencrypt /var/lib/letsencrypt /var/log/letsencrypt
 
 > ⚠️ Внимание: этот шаг затронет **все** сайты/проекты на сервере, использующие nginx/certbot.
 
+### 2.4.2 Очистить APT-артефакты nginx.org (чтобы не было prompt `Overwrite?`)
+
+Если раньше уже добавляли ключ/репозиторий `nginx.org`, при повторной установке может появиться вопрос:
+`File '/usr/share/keyrings/nginx-archive-keyring.gpg' exists. Overwrite?`
+
+Перед новым запуском установщика удалите старые артефакты:
+
+```bash
+rm -f /usr/share/keyrings/nginx-archive-keyring.gpg
+rm -f /etc/apt/sources.list.d/nginx.list
+apt-get update
+```
+
+> После этого `scripts/install.sh` заново создаст keyring и `.list` без интерактивного вопроса.
+
 ### 2.5 Очистить таймеры/состояние xray-manager
 
 ```bash
