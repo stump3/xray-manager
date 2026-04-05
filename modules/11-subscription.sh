@@ -524,6 +524,7 @@ sub_toggle_autoupdate() {
         box_row "  ${DIM}Файлы подписки обновляются автоматически${R}"
         box_row "  ${DIM}при каждом добавлении пользователя.${R}"
         box_blank; box_end
+        local confirm
         ask "Выключить автообновление? [y/N]" confirm "n"
         if [[ "${confirm,,}" == "y" ]]; then
             echo "0" > "$SUB_AUTOUPDATE_FILE"
@@ -536,6 +537,7 @@ sub_toggle_autoupdate() {
         box_row "  ${DIM}Файлы подписки обновляются только вручную${R}"
         box_row "  ${DIM}через пункт \"Обновить файлы подписок\".${R}"
         box_blank; box_end
+        local confirm
         ask "Включить автообновление? [Y/n]" confirm "y"
         if [[ "${confirm,,}" != "n" ]]; then
             mkdir -p "$SUB_DIR"
@@ -671,4 +673,3 @@ sub_show_content() {
     box_row "  Итого: ${YELLOW}${cnt}${R} ссылок"
     box_blank; box_end; pause
 }
-
