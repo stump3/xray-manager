@@ -46,7 +46,7 @@ proto_vless_tcp_reality() {
         "tag":$tag,"listen":$listen,"port":$port,"protocol":"vless",
         "settings":{"clients":[{"email":"main","id":$uuid,"flow":"xtls-rprx-vision"}],"decryption":"none"},
         "streamSettings":{"network":"tcp","security":"reality","realitySettings":{
-            "show":false,"target":$target,"xver":0,
+            "show":false,"dest":$target,"xver":0,
             "serverNames":[$sni],"privateKey":$priv,"shortIds":[$sid]}},
         "sniffing":{"enabled":true,"destOverride":["http","tls","quic"],"routeOnly":true}}')
     ib_add "$ib"; xray_restart
@@ -108,7 +108,7 @@ proto_vless_xhttp_reality() {
         "settings":{"clients":[{"email":"main","id":$uuid,"flow":""}],"decryption":"none"},
         "streamSettings":{"network":"xhttp","security":"reality",
             "xhttpSettings":{"path":$path,"mode":$mode},
-            "realitySettings":{"show":false,"target":$target,"xver":0,
+            "realitySettings":{"show":false,"dest":$target,"xver":0,
                 "serverNames":[$sni],"privateKey":$priv,"shortIds":[$sid]}},
         "sniffing":{"enabled":true,"destOverride":["http","tls","quic"],"routeOnly":true}}')
     ib_add "$ib"; xray_restart
@@ -127,39 +127,39 @@ proto_vless_xhttp_reality() {
 proto_vless_ws_tls() {
     cls; box_top " ☁️  VLESS + WebSocket + TLS" "$BLUE"
     box_blank
-    box_row "  ${YELLOW}⚠  Требуется домен с TLS-сертификатом${R}"
+    box_row "  ${CYAN}TLS терминируется nginx — Xray слушает локально без шифрования${R}"
     box_row "  ${DIM}⚡ Рекомендуется перейти на XHTTP — WebSocket имеет заметный ALPN-отпечаток (http/1.1)${R}"
     box_blank
     xray_ok || { box_row "  ${RED}Установите ядро Xray!${R}"; box_end; pause; return; }
-    local port dom path_v tag cert_p key_p
-    ask "Порт (Xray слушает)" port "8443"
-    ask "Домен" dom ""
+    nginx_ok || { box_row "  ${RED}nginx vhost не найден — запустите install.sh${R}"; box_end; pause; return; }
+    local port path_v tag
+    ask "Порт (внутренний, Xray слушает на 127.0.0.1)" port "10001"
     ask "Path" path_v "/vless"
-    ask "Cert (fullchain.pem)" cert_p "/etc/letsencrypt/live/${dom}/fullchain.pem"
-    ask "Key  (privkey.pem)"   key_p  "/etc/letsencrypt/live/${dom}/privkey.pem"
     ask "Тег" tag "vless-ws"
-    [[ -z "$dom" ]] && { err "Домен обязателен"; pause; return; }
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
     port_check "$port" || { pause; return; }
     local uuid; uuid=$("$XRAY_BIN" uuid 2>/dev/null)
-    kset "$tag" domain "$dom"; kset "$tag" port "$port"
-    kset "$tag" path "$path_v"; kset "$tag" type "vless-ws"
+    local dom; dom=$(grep -oP 'server_name\s+\K\S+' "$NGINX_VHOST" 2>/dev/null | grep -v '_' | head -1)
+    kset "$tag" domain "${dom:-}" ; kset "$tag" port "$port"
+    kset "$tag" path "$path_v"   ; kset "$tag" type "vless-ws"
+    # Xray слушает на loopback без TLS — nginx уже терминировал TLS клиента
     local ib; ib=$(jq -n \
         --arg tag "$tag" --argjson port "$port" --arg uuid "$uuid" \
-        --arg path "$path_v" --arg cert "$cert_p" --arg key "$key_p" \
-        --arg sni "$dom" '{
-        "tag":$tag,"listen":"0.0.0.0","port":$port,"protocol":"vless",
+        --arg path "$path_v" '{
+        "tag":$tag,"listen":"127.0.0.1","port":$port,"protocol":"vless",
         "settings":{"clients":[{"email":"main","id":$uuid}],"decryption":"none"},
-        "streamSettings":{"network":"ws","security":"tls",
-            "tlsSettings":{"serverName":$sni,"alpn":["h2","http/1.1"],
-                "certificates":[{"certificateFile":$cert,"keyFile":$key}]},
+        "streamSettings":{"network":"ws","security":"none",
             "wsSettings":{"path":$path}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
-    cert_check "$cert_p" "$key_p" || { pause; return; }
-    ib_add "$ib"; xray_restart
+    ib_add "$ib"
+    nginx_add_ws_location "$path_v" "$port"
+    xray_restart
     cls; box_top " ✅  VLESS + WS + TLS добавлен" "$GREEN"; box_blank
-    box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  Домен: ${WHITE}${dom}${R}"
-    box_row "  Path: ${WHITE}${path_v}${R}"
+    box_row "  Тег: ${CYAN}${tag}${R}  Внутр.порт: ${YELLOW}${port}${R}"
+    [[ -n "$dom" ]] && box_row "  Домен: ${WHITE}${dom}${R}  (из nginx vhost)"
+    box_row "  Path: ${WHITE}${path_v}${R}  (добавлен в nginx)"
+    box_blank
+    box_row "  ${DIM}Клиент подключается: ${dom:-<ваш домен>}:443${path_v}${R}"
     box_blank; box_end
     show_link_qr "$tag" "main"
 }
@@ -171,41 +171,36 @@ proto_vless_ws_tls() {
 proto_vless_grpc_tls() {
     cls; box_top " 🔄  VLESS + gRPC + TLS" "$BLUE"
     box_blank
-    box_row "  ${YELLOW}⚠  Требуется домен с TLS-сертификатом${R}"
+    box_row "  ${CYAN}TLS терминируется nginx — Xray слушает локально без шифрования${R}"
     box_blank
     xray_ok || { box_row "  ${RED}Установите ядро Xray!${R}"; box_end; pause; return; }
-    local port dom svc tag cert_p key_p
-    ask "Порт" port "443"
-    ask "Домен" dom ""
+    nginx_ok || { box_row "  ${RED}nginx vhost не найден — запустите install.sh${R}"; box_end; pause; return; }
+    local port svc tag
+    ask "Порт (внутренний, Xray слушает на 127.0.0.1)" port "10003"
     ask "ServiceName" svc "xray"
-    ask "Cert (fullchain.pem)" cert_p "/etc/letsencrypt/live/${dom}/fullchain.pem"
-    ask "Key  (privkey.pem)"   key_p  "/etc/letsencrypt/live/${dom}/privkey.pem"
     ask "Тег" tag "vless-grpc"
-    [[ -z "$dom" ]] && { err "Домен обязателен"; pause; return; }
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
     port_check "$port" || { pause; return; }
     local uuid; uuid=$("$XRAY_BIN" uuid 2>/dev/null)
-    kset "$tag" domain "$dom"; kset "$tag" port "$port"
+    local dom; dom=$(grep -oP 'server_name\s+\K\S+' "$NGINX_VHOST" 2>/dev/null | grep -v '_' | head -1)
+    kset "$tag" domain "${dom:-}"; kset "$tag" port "$port"
     kset "$tag" serviceName "$svc"; kset "$tag" type "vless-grpc"
+    # Xray слушает на loopback без TLS — nginx грузит TLS и делает grpc_pass
     local ib; ib=$(jq -n \
         --arg tag "$tag" --argjson port "$port" --arg uuid "$uuid" \
-        --arg svc "$svc" --arg cert "$cert_p" --arg key "$key_p" \
-        --arg sni "$dom" '{
-        "tag":$tag,"listen":"0.0.0.0","port":$port,"protocol":"vless",
+        --arg svc "$svc" '{
+        "tag":$tag,"listen":"127.0.0.1","port":$port,"protocol":"vless",
         "settings":{"clients":[{"email":"main","id":$uuid}],"decryption":"none"},
-        "streamSettings":{"network":"grpc","security":"tls",
-            "tlsSettings":{"serverName":$sni,"alpn":["h2"],
-                "certificates":[{"certificateFile":$cert,"keyFile":$key}]},
+        "streamSettings":{"network":"grpc","security":"none",
             "grpcSettings":{"serviceName":$svc,"multiMode":false}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
-    cert_check "$cert_p" "$key_p" || { pause; return; }
-    ib_add "$ib"; xray_restart
+    ib_add "$ib"
+    nginx_add_grpc_location "$svc" "$port"
+    xray_restart
     cls; box_top " ✅  VLESS + gRPC + TLS добавлен" "$GREEN"; box_blank
-    box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}"
-    box_row "  Домен: ${WHITE}${dom}${R}  ServiceName: ${CYAN}${svc}${R}"
-    box_blank
-    box_row "  ${YELLOW}Nginx (grpc_pass):${R}"
-    box_row "  ${DIM}grpc_pass grpc://127.0.0.1:${port};${R}"
+    box_row "  Тег: ${CYAN}${tag}${R}  Внутр.порт: ${YELLOW}${port}${R}"
+    [[ -n "$dom" ]] && box_row "  Домен: ${WHITE}${dom}${R}  ServiceName: ${CYAN}${svc}${R}"
+    box_row "  ${DIM}Nginx: grpc_pass grpc://127.0.0.1:${port}; — добавлен автоматически${R}"
     box_blank; box_end
     show_link_qr "$tag" "main"
 }
@@ -217,38 +212,36 @@ proto_vless_grpc_tls() {
 proto_vless_httpupgrade_tls() {
     cls; box_top " 🔀  VLESS + HTTPUpgrade + TLS" "$BLUE"
     box_blank
-    box_row "  ${YELLOW}⚠  Требуется домен с TLS-сертификатом${R}"
+    box_row "  ${CYAN}TLS терминируется nginx — Xray слушает локально без шифрования${R}"
     box_row "  ${DIM}⚡ Рекомендуется перейти на XHTTP — HTTPUpgrade имеет заметный ALPN-отпечаток (http/1.1)${R}"
     box_blank
     xray_ok || { box_row "  ${RED}Установите ядро Xray!${R}"; box_end; pause; return; }
-    local port dom path_v tag cert_p key_p
-    ask "Порт" port "443"
-    ask "Домен" dom ""
+    nginx_ok || { box_row "  ${RED}nginx vhost не найден — запустите install.sh${R}"; box_end; pause; return; }
+    local port path_v tag
+    ask "Порт (внутренний, Xray слушает на 127.0.0.1)" port "10002"
     ask "Path" path_v "/upgrade"
-    ask "Cert (fullchain.pem)" cert_p "/etc/letsencrypt/live/${dom}/fullchain.pem"
-    ask "Key  (privkey.pem)"   key_p  "/etc/letsencrypt/live/${dom}/privkey.pem"
     ask "Тег" tag "vless-httpupgrade"
-    [[ -z "$dom" ]] && { err "Домен обязателен"; pause; return; }
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
     port_check "$port" || { pause; return; }
     local uuid; uuid=$("$XRAY_BIN" uuid 2>/dev/null)
-    kset "$tag" domain "$dom"; kset "$tag" port "$port"
+    local dom; dom=$(grep -oP 'server_name\s+\K\S+' "$NGINX_VHOST" 2>/dev/null | grep -v '_' | head -1)
+    kset "$tag" domain "${dom:-}"; kset "$tag" port "$port"
     kset "$tag" path "$path_v"; kset "$tag" type "vless-httpupgrade"
     local ib; ib=$(jq -n \
         --arg tag "$tag" --argjson port "$port" --arg uuid "$uuid" \
-        --arg path "$path_v" --arg cert "$cert_p" --arg key "$key_p" \
-        --arg sni "$dom" '{
-        "tag":$tag,"listen":"0.0.0.0","port":$port,"protocol":"vless",
+        --arg path "$path_v" --arg host "${dom:-localhost}" '{
+        "tag":$tag,"listen":"127.0.0.1","port":$port,"protocol":"vless",
         "settings":{"clients":[{"email":"main","id":$uuid}],"decryption":"none"},
-        "streamSettings":{"network":"httpupgrade","security":"tls",
-            "tlsSettings":{"serverName":$sni,"alpn":["h2","http/1.1"],
-                "certificates":[{"certificateFile":$cert,"keyFile":$key}]},
-            "httpupgradeSettings":{"path":$path,"host":$sni}},
+        "streamSettings":{"network":"httpupgrade","security":"none",
+            "httpupgradeSettings":{"path":$path,"host":$host}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
-    cert_check "$cert_p" "$key_p" || { pause; return; }
-    ib_add "$ib"; xray_restart
+    ib_add "$ib"
+    nginx_add_ws_location "$path_v" "$port"
+    xray_restart
     cls; box_top " ✅  VLESS + HTTPUpgrade + TLS добавлен" "$GREEN"; box_blank
-    box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  Path: ${WHITE}${path_v}${R}"
+    box_row "  Тег: ${CYAN}${tag}${R}  Внутр.порт: ${YELLOW}${port}${R}  Path: ${WHITE}${path_v}${R}"
+    [[ -n "$dom" ]] && box_row "  Домен: ${WHITE}${dom}${R}"
+    box_row "  ${DIM}nginx location ${path_v} добавлен автоматически${R}"
     box_blank; box_end
     show_link_qr "$tag" "main"
 }
@@ -260,37 +253,35 @@ proto_vless_httpupgrade_tls() {
 proto_vmess_ws_tls() {
     cls; box_top " 📦  VMess + WebSocket + TLS" "$ORANGE"
     box_blank
-    box_row "  ${YELLOW}⚠  Требуется домен с TLS-сертификатом${R}"
+    box_row "  ${CYAN}TLS терминируется nginx — Xray слушает локально без шифрования${R}"
     box_blank
     xray_ok || { box_row "  ${RED}Установите ядро Xray!${R}"; box_end; pause; return; }
-    local port dom path_v tag cert_p key_p
-    ask "Порт" port "443"
-    ask "Домен" dom ""
+    nginx_ok || { box_row "  ${RED}nginx vhost не найден — запустите install.sh${R}"; box_end; pause; return; }
+    local port path_v tag
+    ask "Порт (внутренний, Xray слушает на 127.0.0.1)" port "10002"
     ask "Path" path_v "/vmess"
-    ask "Cert (fullchain.pem)" cert_p "/etc/letsencrypt/live/${dom}/fullchain.pem"
-    ask "Key  (privkey.pem)"   key_p  "/etc/letsencrypt/live/${dom}/privkey.pem"
     ask "Тег" tag "vmess-ws"
-    [[ -z "$dom" ]] && { err "Домен обязателен"; pause; return; }
     ib_exists "$tag" && { err "Тег '$tag' уже занят"; pause; return; }
     port_check "$port" || { pause; return; }
     local uuid; uuid=$("$XRAY_BIN" uuid 2>/dev/null)
-    kset "$tag" domain "$dom"; kset "$tag" port "$port"
+    local dom; dom=$(grep -oP 'server_name\s+\K\S+' "$NGINX_VHOST" 2>/dev/null | grep -v '_' | head -1)
+    kset "$tag" domain "${dom:-}"; kset "$tag" port "$port"
     kset "$tag" path "$path_v"; kset "$tag" type "vmess-ws"
     local ib; ib=$(jq -n \
         --arg tag "$tag" --argjson port "$port" --arg uuid "$uuid" \
-        --arg path "$path_v" --arg cert "$cert_p" --arg key "$key_p" \
-        --arg sni "$dom" '{
-        "tag":$tag,"listen":"0.0.0.0","port":$port,"protocol":"vmess",
+        --arg path "$path_v" --arg host "${dom:-localhost}" '{
+        "tag":$tag,"listen":"127.0.0.1","port":$port,"protocol":"vmess",
         "settings":{"clients":[{"email":"main","id":$uuid,"alterId":0}]},
-        "streamSettings":{"network":"ws","security":"tls",
-            "tlsSettings":{"serverName":$sni,"alpn":["h2","http/1.1"],
-                "certificates":[{"certificateFile":$cert,"keyFile":$key}]},
-            "wsSettings":{"path":$path,"headers":{"Host":$sni}}},
+        "streamSettings":{"network":"ws","security":"none",
+            "wsSettings":{"path":$path,"headers":{"Host":$host}}},
         "sniffing":{"enabled":true,"destOverride":["http","tls"]}}')
-    cert_check "$cert_p" "$key_p" || { pause; return; }
-    ib_add "$ib"; xray_restart
+    ib_add "$ib"
+    nginx_add_ws_location "$path_v" "$port"
+    xray_restart
     cls; box_top " ✅  VMess + WS + TLS добавлен" "$GREEN"; box_blank
-    box_row "  Тег: ${CYAN}${tag}${R}  Порт: ${YELLOW}${port}${R}  Домен: ${WHITE}${dom}${R}"
+    box_row "  Тег: ${CYAN}${tag}${R}  Внутр.порт: ${YELLOW}${port}${R}"
+    [[ -n "$dom" ]] && box_row "  Домен: ${WHITE}${dom}${R}  Path: ${WHITE}${path_v}${R}"
+    box_row "  ${DIM}nginx location ${path_v} добавлен автоматически${R}"
     box_blank; box_end
     show_link_qr "$tag" "main"
 }
@@ -1070,7 +1061,7 @@ proto_vless_grpc_reality() {
         "settings":{"clients":[{"email":"main","id":$uuid,"flow":""}],"decryption":"none"},
         "streamSettings":{"network":"grpc","security":"reality",
             "grpcSettings":{"serviceName":$svc,"multiMode":false},
-            "realitySettings":{"show":false,"target":$target,"xver":0,
+            "realitySettings":{"show":false,"dest":$target,"xver":0,
                 "serverNames":[$sni],"privateKey":$priv,"shortIds":[$sid]}},
         "sniffing":{"enabled":true,"destOverride":["http","tls","quic"],"routeOnly":true}}')
     ib_add "$ib"; xray_restart
