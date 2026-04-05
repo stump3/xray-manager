@@ -5,6 +5,58 @@
 
 ---
 
+## [3.0.0] — 2026-04-05
+
+### ✨ Новое
+
+**`scripts/install.sh` — `diagnose_certbot_failure()`**  
+При провале `certbot certonly` (Some challenges have failed) вместо сырого traceback выводится структурированная диагностика: проверяются DNS A-запись, HTTP доступность `/.well-known/`, UFW, Cloudflare Proxy по диапазону IP, `nginx -t`. Для каждого провала — конкретная инструкция. В конце — 5 типовых сценариев и путь к `/var/log/letsencrypt/letsencrypt.log`.
+
+**`scripts/install.sh` — `--dry-run` режим (preflight без изменений)**  
+`sudo bash scripts/install.sh --dry-run` — выводит план установки без записи конфигов и изменения системы. Позволяет предвалидировать домен/порты/параметры до запуска.
+
+**`scripts/install.sh` — `load_module` edge-case для dynamic stream**  
+После установки stream-модуля проверяется что директива `load_module` присутствует в `nginx.conf`. На Ubuntu/Debian .so-файл устанавливается, но `load_module` может отсутствовать — это вызывает скрытый `nginx: [emerg] unknown directive "stream"` при первом тесте конфига. Если директива отсутствует, она добавляется автоматически.
+
+### 🟡 Улучшено
+
+**`scripts/install.sh` — многоступенчатый fallback stream-модуля**  
+Цепочка попыток: `nginx-module-stream` → `nginx-full` → `libnginx-mod-stream`. При неудаче всех трёх — явный `err` + `exit 1` с actionable подсказками вместо тихого падения.
+
+**`scripts/install.sh` — устойчивость nginx keyring**  
+`rm` старого keyring + `gpg --dearmor --yes` перед записью нового — устраняет сбои идемпотентности при повторном запуске.
+
+**`modules/02-ui.sh`, `modules/99-main.sh` — детерминированный `printf` для рамок**  
+`printf '%*s' "$i"` → `printf '%*s' "$i" ""` в отрисовке рамок/разделителей.
+
+**`modules/11-subscription.sh` — локализация переменных**  
+`local confirm` в `sub_toggle_autoupdate()` — устраняет утечку во внешнюю область видимости.
+
+### 📄 Документация
+
+`docs/CODE_AUDIT_REPORT.md`, `docs/DIFF_LINES_REPORT.md`, `docs/IMPROVEMENT_UNIFIED.md` — инженерная обратная связь по аудиту, line-level diff и roadmap улучшений.
+
+---
+
+## [2.9.1] — 2026-04-05
+
+### 🟡 Улучшено (стабильность install-flow)
+
+**`scripts/install.sh` — keyring nginx.org и stream-модуль стали надёжнее**  
+Добавлено удаление старого keyring + `gpg --dearmor --yes` перед записью нового — устраняет сбои при повторном запуске. Stream-модуль устанавливается по цепочке приоритетов: `nginx-module-stream` → `nginx-full` → `libnginx-mod-stream`; при неудаче выводится явный `err` и `exit 1` с подсказкой вместо тихого падения. Добавлено создание `sites-available` / `sites-enabled` до конфигурирования vhost.
+
+**`modules/02-ui.sh`, `modules/99-main.sh` — детерминированный `printf` для рамок**  
+`printf '%*s' "$i"` заменено на `printf '%*s' "$i" ""` в местах отрисовки рамок и разделителей — устраняет неоднозначность поведения printf в разных shell-окружениях.
+
+**`modules/11-subscription.sh` — локализация переменных в `sub_toggle_autoupdate()`**  
+Добавлен `local confirm` в обеих ветках функции — устраняет утечку переменной во внешнюю область видимости.
+
+### 📄 Документация
+
+Добавлены `docs/CODE_AUDIT_REPORT.md`, `docs/DIFF_LINES_REPORT.md`, `docs/IMPROVEMENT_UNIFIED.md` — инженерная обратная связь по аудиту, line-level diff и roadmap улучшений.
+
+---
+
 ## [2.9.1] — 2026-04-05
 
 ### 🔧 Исправлено

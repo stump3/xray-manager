@@ -52,6 +52,87 @@ run_step() {
     "$@"
 }
 
+# ── Certbot диагностика ────────────────────────────────────────────────────────
+# Вызывается при провале certbot certonly. Быстро находит root-cause и выводит
+# actionable подсказки вместо сырого traceback.
+diagnose_certbot_failure() {
+    local domain="${1:-}" email="${2:-}"
+    printf "\n${RED}${BOLD}  ✗ certbot: Some challenges have failed${R}\n\n"
+    printf "  ${DIM}Лог: /var/log/letsencrypt/letsencrypt.log${R}\n\n"
+
+    printf "  ${YELLOW}Диагностика...${R}\n"
+
+    # DNS A-запись
+    local domain_ip server_ip
+    domain_ip=$(dig +short A "$domain" 2>/dev/null | tail -1 || echo "")
+    server_ip=$(curl -4 -s --max-time 5 https://icanhazip.com 2>/dev/null || echo "")
+    if [[ -z "$domain_ip" ]]; then
+        printf "  ${RED}✗${R} DNS: A-запись для %s не найдена\n" "$domain"
+        printf "     → Убедитесь что домен существует и A-запись добавлена\n"
+    elif [[ -n "$server_ip" && "$domain_ip" != "$server_ip" ]]; then
+        printf "  ${RED}✗${R} DNS mismatch: %s → %s, сервер → %s\n" "$domain" "$domain_ip" "$server_ip"
+        printf "     → Обновите A-запись домена на IP сервера и дождитесь TTL\n"
+    else
+        printf "  ${GREEN}✓${R} DNS: %s → %s (совпадает)\n" "$domain" "$domain_ip"
+    fi
+
+    # Порт 80 доступен
+    local acme_check
+    acme_check=$(curl -4 -sIo /dev/null -w "%{http_code}"         --max-time 5 "http://${domain}/.well-known/acme-challenge/test" 2>/dev/null || echo "000")
+    if [[ "$acme_check" == "404" || "$acme_check" == "200" ]]; then
+        printf "  ${GREEN}✓${R} HTTP :80 доступен (статус %s)\n" "$acme_check"
+    else
+        printf "  ${RED}✗${R} HTTP :80 недоступен (статус %s)\n" "$acme_check"
+        # Что слушает 80?
+        local p80
+        p80=$(ss -tlnp 'sport = :80' 2>/dev/null             | awk 'NR>1{match($0,/users:\(\("([^"]+)/,a); print a[1]}' | head -1)
+        if [[ -z "$p80" ]]; then
+            printf "     → Порт 80 никто не слушает — nginx не запущен?\n"
+            printf "     → systemctl restart nginx\n"
+        else
+            printf "     → Порт 80 занят: %s\n" "$p80"
+        fi
+    fi
+
+    # UFW
+    if command -v ufw &>/dev/null; then
+        local ufw_80; ufw_80=$(ufw status 2>/dev/null | grep -E '^80|^Nginx' | head -3)
+        if [[ -z "$ufw_80" ]]; then
+            printf "  ${YELLOW}⚠${R} UFW: порт 80 не открыт — ufw allow 80/tcp\n"
+        else
+            printf "  ${GREEN}✓${R} UFW: %s\n" "$(echo "$ufw_80" | head -1)"
+        fi
+    fi
+
+    # Cloudflare proxy
+    if [[ -n "$domain_ip" ]]; then
+        local cf_ranges=("104.16." "104.17." "104.18." "104.19." "172.64." "172.65." "162.158.")
+        for r in "${cf_ranges[@]}"; do
+            if [[ "$domain_ip" == "${r}"* ]]; then
+                printf "  ${RED}✗${R} Cloudflare Proxy (оранжевое облако) ВКЛЮЧЁН\n"
+                printf "     → Переключите DNS-запись домена в режим DNS-only (серое облако)\n"
+                printf "     → Certbot требует прямого доступа к серверу через HTTP\n"
+                break
+            fi
+        done
+    fi
+
+    # nginx config test
+    if nginx -t 2>/dev/null; then
+        printf "  ${GREEN}✓${R} nginx -t: конфигурация валидна\n"
+    else
+        printf "  ${RED}✗${R} nginx -t: ошибка конфигурации — nginx -T для деталей\n"
+    fi
+
+    printf "\n  ${DIM}Типичные причины провала ACME HTTP-01:\n"
+    printf "   1. DNS-запись не обновилась (TTL не истёк)\n"
+    printf "   2. Cloudflare Proxy включён (нужно DNS-only)\n"
+    printf "   3. Порт 80 закрыт в UFW / firewall провайдера\n"
+    printf "   4. nginx не запущен или конфиг невалиден\n"
+    printf "   5. Домен ещё не куплен / не делегирован\n"
+    printf "  Полный лог: tail -50 /var/log/letsencrypt/letsencrypt.log${R}\n\n"
+}
+
 # ── APT helpers ────────────────────────────────────────────────────────────────
 # Проверяет доступность внешнего репозитория. Возвращает 1 + warn если недоступен.
 preflight_repo_check() {
@@ -106,7 +187,7 @@ cat << 'BANNER'
  ██╔╝ ██╗██║  ██║██║  ██║   ██║       ██║ ╚═╝ ██║╚██████╔╝██║  ██║
  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝
 BANNER
-printf "${R}\n  ${DIM}Установка стека v2.9.1${R}\n\n"
+printf "${R}\n  ${DIM}Установка стека v3.0.0${R}\n\n"
 
 # ══════════════════════════════════════════════════════════════
 # ОБНАРУЖЕНИЕ СУЩЕСТВУЮЩЕЙ УСТАНОВКИ
@@ -446,6 +527,25 @@ if $USE_STREAM && ! _has_stream; then
         warn "  2) Выбери другой порт для REALITY (не 443)"
         exit 1
     fi
+
+    # Edge-case: модуль установлен как dynamic .so, но load_module не прописан
+    # (актуально для Ubuntu-пакетов, которые не добавляют conf.d/nginx-mod-stream.conf).
+    # nginx.org-пакет включает stream compiled-in — проверка не нужна.
+    if nginx -V 2>&1 | grep -q "with-stream"; then
+        : # compiled-in, load_module не требуется
+    elif ! nginx -T 2>/dev/null | grep -q "load_module.*stream"; then
+        # Ищем .so файл и добавляем load_module если его нет в nginx.conf
+        local _so
+        _so=$(find /usr/lib/nginx/modules /etc/nginx/modules -name "*mod-stream*.so"               -o -name "*ngx_stream_module*.so" 2>/dev/null | head -1)
+        if [[ -n "$_so" ]]; then
+            # Добавить load_module в начало nginx.conf если ещё не там
+            if ! grep -q "load_module.*${_so##*/}" /etc/nginx/nginx.conf 2>/dev/null; then
+                sed -i "1s|^|load_module ${_so};
+|" /etc/nginx/nginx.conf
+                info "Добавлен load_module ${_so##*/} в nginx.conf"
+            fi
+        fi
+    fi
 fi
 
 NGINX_MINOR=$(nginx -v 2>&1 | grep -oP '\d+\.\d+' | head -1 | cut -d. -f2 || echo 0)
@@ -522,12 +622,16 @@ if [[ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]]; then
     info "Сертификат существует"
 else
     spin_start "certbot certonly"
-    certbot certonly --webroot \
+    if ! certbot certonly --webroot \
         -w /var/www/certbot \
         -d "${DOMAIN}" \
         --email "${LE_EMAIL}" \
-        --agree-tos --non-interactive --quiet
-    spin_stop
+        --agree-tos --non-interactive --quiet 2>/tmp/certbot_err.log; then
+        spin_stop "err"
+        diagnose_certbot_failure "$DOMAIN" "$LE_EMAIL"
+        exit 1
+    fi
+    spin_stop "ok"
 fi
 ok "Сертификат: /etc/letsencrypt/live/${DOMAIN}/"
 
