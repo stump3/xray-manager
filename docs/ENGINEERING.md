@@ -1,6 +1,6 @@
 # Engineering Document
 
-> Xray Manager v3.0.0 — архитектура, дизайн-решения, протоколы данных.
+> Xray Manager v3.0.3 — архитектура, дизайн-решения, протоколы данных.
 
 ---
 
@@ -753,3 +753,35 @@ bash -n modules/08-protocols.sh
 | SC2046 | SSH opts | Намеренно — opts это список флагов | подавлено через `-e` |
 | SC2148 | `modules/*.sh` | Фрагменты без shebang — собираются в монолит через `cat` | подавлено через `-e SC2148` + `--shell=bash` в Makefile |
 | SC2059 | `modules/02-ui.sh` | ANSI-переменные в format-строке printf — никогда не содержат `%` | `# shellcheck disable=SC2059` в заголовке файла |
+
+---
+
+## Файлы по зонам ответственности
+
+> Минимальный набор для инженера, работающего с установкой, nginx, Xray или TLS/REALITY.
+
+```
+Установка
+└─ scripts/install.sh                домен · email · выбор архитектуры · certbot · nginx · xray
+
+nginx
+├─ nginx/nginx.conf                  основной конфиг (stream.d include, http блок)
+├─ nginx/sites/vpn.conf              vhost шаблон: HTTPS, proxy_pass, location placeholder
+└─ modules/05-config.sh              nginx_add_ws_location · nginx_add_grpc_location
+                                     _nginx_upsert_block · nginx_del_location
+
+Xray
+├─ modules/04-xray-core.sh           установка и обновление бинарника xray-core
+└─ modules/05-config.sh              ib_add · ib_del · cfgw · xray_restart · kset/kget
+
+Протоколы
+└─ modules/08-protocols.sh           proto_vless_tcp_reality · proto_vless_grpc/xhttp_reality
+                                     proto_vless_ws/grpc/httpupgrade_tls · proto_vmess_*
+                                     proto_trojan_tls · proto_shadowsocks · proto_splithttp_tls
+
+TLS-сертификаты
+└─ scripts/certbot-deploy-hook.sh    хук автообновления: reload nginx + xray после certbot renew
+```
+
+Всё остальное (`09-users`, `11-subscription`, `14-telemt`, `15-hysteria2`, `16-routing` …)
+не затрагивает nginx/Xray/TLS и для этих задач не нужно.
