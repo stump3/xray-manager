@@ -1,3 +1,11 @@
+
+# Changelog
+
+> Все значимые изменения документируются здесь.  
+> Формат: [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/)
+
+---
+
 ## [3.0.4] — 2026-04-05
 
 ### 🔧 Исправлено
@@ -83,14 +91,6 @@
 Хардкод `location /ws { proxy_pass http://127.0.0.1:WS_PORT; }` удалён.
 Добавлен маркер `# XRAY_LOCATIONS_PLACEHOLDER` — location-блоки вставляются
 автоматически при добавлении протокола.
-
----
-
-
-# Changelog
-
-> Все значимые изменения документируются здесь.  
-> Формат: [Keep a Changelog](https://keepachangelog.com/ru/1.0.0/)
 
 ---
 
