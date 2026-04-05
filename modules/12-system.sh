@@ -87,13 +87,11 @@ do_restore() {
 
 do_remove_all() {
     cls; box_top " 🗑  Полное удаление" "$RED"; box_blank
-    box_row "  ${RED}${BOLD}Удаляет: Xray, Hysteria2, telemt, nginx конфиги, ключи, логи!${R}"
-    box_blank; box_end
-    confirm "Вы уверены?" "n" || return
+    box_row "  ${RED}Удаляет: Xray, Hysteria2, telemt, nginx конфиги, ключи, логи${R}"
     box_blank
-    box_row "  ${RED}Введите слово ${BOLD}УДАЛИТЬ${R}${RED} для подтверждения:${R}"
-    box_end
-    confirm_word "УДАЛИТЬ" || { info "Операция отменена"; return; }
+    printf "  ${RED}Введите ${BOLD}УДАЛИТЬ${R}${RED} для подтверждения:${R}  "
+    local _w; read -r _w < /dev/tty
+    [[ "$_w" == "УДАЛИТЬ" ]] || { info "Отменено"; return; }
 
     # Xray — через официальный установщик
     bash -c "$(curl -4 -sL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" \

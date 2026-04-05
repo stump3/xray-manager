@@ -30,28 +30,24 @@ print(w)
 # ── Разделитель ────────────────────────────────────────────────────────────────
 
 _sep() {
-    local w; w=$(tw)
-    printf "${DIM}%s${R}\n" "$(printf '%*s' "$w" "" | tr ' ' '─')"
+    # Пустая функция — оставлена для совместимости с вызовами из других модулей
+    :
 }
 
 # ── Компоненты секции ──────────────────────────────────────────────────────────
 
 box_top() {
     local title="$1" col="${2:-$CYAN}"
-    printf "\n"
-    _sep
-    printf "  ${col}${BOLD}%s${R}\n" "$title"
-    _sep
+    printf "\n  ${col}${BOLD}%s${R}\n" "$title"
+    printf "  ${DIM}%s${R}\n" "$(printf '%.0s─' {1..48})"
 }
 
 box_end() {
-    _sep
     printf "\n"
 }
 
 box_mid() {
     printf "\n"
-    _sep
 }
 
 box_row() {
