@@ -6,9 +6,9 @@ need_root() {
     [[ "$(id -u)" -eq 0 ]] || { err "Требуются права root: sudo bash $0"; exit 1; }
 }
 
-xray_ok()      { [[ -f "$XRAY_BIN" ]]; }
+xray_ok()      { [[ -x "$XRAY_BIN" ]]; }
 xray_active()  { systemctl is-active --quiet xray 2>/dev/null; }
-xray_ver()     { xray_ok && "$XRAY_BIN" -version 2>/dev/null | awk 'NR==1{print $2}' || echo "—"; }
+xray_ver()     { xray_ok && "$XRAY_BIN" version 2>/dev/null | awk 'NR==1{print $2}' || echo "—"; }
 
 port_check() {
     local port="$1"
