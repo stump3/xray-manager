@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════
-#  Xray Manager — интерактивная установка v2.9.1
+#  Xray Manager — интерактивная установка
 #  Запуск: sudo bash scripts/install.sh
 # ══════════════════════════════════════════════════════════════
 set -euo pipefail
 
 R="\e[0m"; BOLD="\e[1m"; DIM="\e[2m"
 GREEN="\e[32m"; YELLOW="\e[33m"; CYAN="\e[36m"; RED="\e[31m"
+
+# Версия читается из модуля констант
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MANAGER_VERSION="$(grep '^MANAGER_VERSION=' "${SCRIPT_DIR}/../modules/01-constants.sh" \
+    2>/dev/null | cut -d'"' -f2 || echo "3.x")"
 
 ok()   { printf " ${GREEN}✓${R} %s\n" "$*"; }
 err()  { printf " ${RED}✗${R} ${RED}%s${R}\n" "$*" >&2; }
