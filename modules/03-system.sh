@@ -31,13 +31,26 @@ server_ip()    { timeout 3 curl -4 -s https://icanhazip.com 2>/dev/null || timeo
 
 install_deps() {
     local need=()
-    for p in curl unzip jq qrencode openssl uuid-runtime python3; do
+    for p in curl unzip jq qrencode openssl python3; do
         command -v "$p" &>/dev/null || need+=("$p")
     done
-    [[ ${#need[@]} -eq 0 ]] && return
-    info "Установка: ${need[*]}"
-    apt-get update -qq 2>/dev/null
-    apt-get install -y -qq "${need[@]}" 2>/dev/null
+    [[ ${#need[@]} -eq 0 ]] && { ok "Все зависимости установлены"; return 0; }
+
+    info "Устанавливаем: ${need[*]}"
+
+    # Если detect_os уже вызван — используем PKG_INSTALL
+    if [[ -n "${PKG_INSTALL[*]+x}" ]]; then
+        "${PKG_UPDATE[@]}" 2>/dev/null || true
+        "${PKG_INSTALL[@]}" "${need[@]}" 2>/dev/null \
+            || { err "Не удалось установить зависимости"; return 1; }
+    else
+        # Fallback: Debian/Ubuntu
+        apt-get update -qq 2>/dev/null || true
+        apt-get install -y -qq "${need[@]}" 2>/dev/null \
+            || { err "Не удалось установить зависимости"; return 1; }
+    fi
+
+    ok "Зависимости установлены"
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
